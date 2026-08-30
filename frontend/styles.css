@@ -538,3 +538,88 @@ select.input {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
+
+/* ============================================================
+   Casca compartilhada (shell.js) — cabeçalho, trilha de etapas
+   e rodapé idênticos nas 7 telas. Paleta matricula.rio.
+   ============================================================ */
+
+:root {
+  --sh-topo: #16222e;
+  --sh-navy: #0f3a5f;
+  --sh-ciano: #29abe2;
+  --sh-borda: #dce2e6;
+}
+
+.shell-interno { max-width: 1180px; margin: 0 auto; padding: 0 20px; width: 100%; }
+
+.shell-topo { background: var(--sh-topo); color: #fff; font-size: 12.5px; }
+.shell-topo .shell-interno {
+  display: flex; justify-content: space-between; gap: 14px;
+  padding: 7px 20px; flex-wrap: wrap;
+}
+.shell-topo b { font-weight: 600; }
+.shell-topo-sel { color: rgba(255, 255, 255, 0.7); }
+
+.shell-cabecalho { background: var(--sh-navy); }
+.shell-cabecalho .shell-interno {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 18px; padding: 15px 20px; flex-wrap: wrap;
+}
+.shell-marca {
+  display: flex; align-items: center; gap: 10px;
+  font-family: "Poppins", var(--font-display, sans-serif);
+  font-weight: 800; font-size: 20px; letter-spacing: -0.01em; text-decoration: none;
+}
+.shell-traco { width: 20px; height: 3px; border-radius: 2px; background: var(--sh-ciano); flex: none; }
+.shell-match { color: #fff; }
+.shell-carioca { color: var(--sh-ciano); }
+
+.shell-perfis { display: flex; gap: 2px; background: rgba(0,0,0,0.22); padding: 3px; border-radius: 8px; }
+.shell-perfis a {
+  font-family: "Poppins", sans-serif; font-weight: 600; font-size: 13px;
+  color: rgba(255,255,255,0.8); text-decoration: none; padding: 8px 15px; border-radius: 5px;
+}
+.shell-perfis a:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.shell-perfis a[aria-current="page"] { background: var(--sh-ciano); color: #06283d; font-weight: 700; }
+
+/* trilha de etapas */
+.shell-trilha { background: #fff; border-bottom: 1px solid var(--sh-borda); padding: 13px 0 11px; }
+.shell-passos { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; }
+.shell-liga { flex: 1; height: 2px; background: var(--sh-borda); margin: 0 6px; min-width: 10px; }
+.shell-passo { flex: none; }
+.shell-passo a, .shell-passo > span {
+  display: flex; align-items: center; gap: 7px; text-decoration: none; color: #78889a;
+}
+.shell-passo a:hover .shell-rotulo { color: var(--sh-navy); text-decoration: underline; }
+.shell-bola {
+  width: 26px; height: 26px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Poppins", sans-serif; font-weight: 700; font-size: 12px;
+  border: 2px solid var(--sh-borda); background: #fff; color: #78889a;
+}
+.shell-rotulo { font-size: 12.5px; font-weight: 600; }
+.shell-passo.feito .shell-bola { background: var(--sh-navy); border-color: var(--sh-navy); color: #fff; }
+.shell-passo.feito .shell-rotulo, .shell-passo.feito a { color: var(--sh-navy); }
+.shell-passo.atual .shell-bola {
+  border-color: var(--sh-navy); color: var(--sh-navy);
+  box-shadow: 0 0 0 3px rgba(41,171,226,0.25);
+}
+.shell-passo.atual .shell-rotulo { color: var(--sh-navy); font-weight: 700; }
+.shell-etapa-texto { font-size: 12.5px; color: #55647a; margin-top: 9px; }
+@media (max-width: 620px) { .shell-rotulo { display: none; } }
+
+/* rodapé */
+.shell-rodape { background: var(--sh-topo); color: rgba(255,255,255,0.68); font-size: 12.5px; margin-top: auto; }
+.shell-rodape-grade { display: flex; gap: 26px; flex-wrap: wrap; padding: 20px; }
+.shell-rodape-grade > div { flex: 1; min-width: 250px; }
+.shell-rodape b {
+  color: #fff; font-weight: 600; display: block; margin-bottom: 4px;
+  font-family: "Poppins", sans-serif; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.shell-destaque { color: #3fc1e9; }
+
+/* o body das telas de fluxo precisa empurrar o rodapé pro fim */
+body { display: flex; flex-direction: column; min-height: 100dvh; }
+body > main, body > .container { flex: 1; }
