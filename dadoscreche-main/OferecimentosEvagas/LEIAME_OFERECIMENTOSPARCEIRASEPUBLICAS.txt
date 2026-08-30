@@ -1,0 +1,54 @@
+================================================================================
+                      MONITORAMENTO DE MATRÍCULAS - SME/RJ
+================================================================================
+
+Este diretório contém os arquivos consolidados referentes ao monitoramento 
+mensal de matrículas das unidades conveniadas e públicas da rede municipal 
+de educação do Rio de Janeiro, sob gestão da Secretaria Municipal de Educação 
+(SME).
+
+--------------------------------------------------------------------------------
+1. ARQUIVOS DE UNIDADES CONVENIADAS (PARCEIRAS)
+--------------------------------------------------------------------------------
+
+Arquivos:
+  - Parceiras2023.txt (ou .xlsx)
+  - Parceiras2024.txt (ou .xlsx)
+  - Parceiras2025.txt (ou .xlsx)
+
+Descrição:
+  - Contêm os consolidados de monitoramento de matrículas das unidades 
+    conveniadas à Prefeitura do Rio / SME.
+  - Os relatórios são enviados mensalmente pelas Coordenadorias Regionais 
+    de Educação (CREs), que consolidam os dados de suas respectivas regiões 
+    e os encaminham à Gerência de Matrícula da SME.
+  - Periodicidade: mensal, com defasagem de aproximadamente 1 mês entre 
+    a coleta e o envio.
+  - Formato: planilhas Excel (.xlsx).
+
+--------------------------------------------------------------------------------
+2. ARQUIVOS DE UNIDADES PÚBLICAS (TOTALALUNOSCRECHE)
+--------------------------------------------------------------------------------
+
+Arquivos:
+  - totalalunoscreche2023.txt (ou .xlsx)
+  - totalalunoscreche2024.txt (ou .xlsx)
+  - totalalunoscreche2025.txt (ou .xlsx)
+
+Descrição:
+  - Consolidados de unidades públicas que oferecem atendimento em creche.
+  - Os dados são organizados por grupamento (faixa etária).
+  - Fonte: Sistema de Gestão Acadêmica – sistema próprio da SME para 
+    gestão e monitoramento de dados educacionais.
+  - Atualização: dinâmica. 
+
+--------------------------------------------------------------------------------
+3. OBSERVAÇÕES GERAIS
+--------------------------------------------------------------------------------
+
+- Os arquivos de unidades conveniadas e públicas possuem origens e 
+  periodicidades distintas, devendo ser utilizados com atenção às suas 
+  respectivas bases de dados.
+
+================================================================================
+                      

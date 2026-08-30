@@ -1,0 +1,5 @@
+# Os dois CSVs maiores sao versionados compactados (.csv.gz), porque o GitHub
+# recusa qualquer arquivo acima de 100 MB. Se voce descompactar localmente,
+# as copias .csv ficam de fora do controle de versao.
+Bases IC_ ClassificadoseFila/01_QueryA_InscricoesPorAno.csv
+Bases IC_ ClassificadoseFila/02_QueryB_RespostasSocioEconomicas.csv

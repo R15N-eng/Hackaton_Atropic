@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inscrição na creche — Creche RJ</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand"><span class="mark">🎒</span> Inscrição Creche</div>
+  <div class="stepper" aria-hidden="true">
+    <span class="step active"></span>
+    <span class="step"></span>
+    <span class="step"></span>
+    <span class="step"></span>
+  </div>
+  <p class="stepper-label">Etapa 1 de 4 — Inscrição</p>
+</header>
+
+<main class="container">
+  <p class="eyebrow">Inscrição</p>
+  <h1 class="page-title">Vamos inscrever sua criança</h1>
+  <p class="page-lede">Leva poucos minutos. Você poderá acompanhar a posição na fila depois, a qualquer momento.</p>
+
+  <form id="form-inscricao" novalidate>
+    <div class="card">
+      <p class="section-title">Onde a família mora</p>
+      <p class="section-sub">Usamos isso para sugerir a unidade mais próxima na hora de levar os documentos.</p>
+      <div class="field" style="margin-bottom:0;">
+        <label for="bairro-cep">Bairro ou CEP</label>
+        <input class="input" id="bairro-cep" name="bairro_cep" type="text" placeholder="Ex.: Bangu ou 21750-000" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <p class="section-title">Opções de creche</p>
+      <p class="section-sub">Escolha até 5 unidades, na ordem da sua preferência. A 1ª opção é a que a família mais quer.</p>
+      <div id="lista-preferencias" class="stack"></div>
+      <button type="button" id="btn-adicionar-pref" class="btn btn-secondary btn-sm btn-block" style="margin-top:12px;">+ Adicionar outra opção</button>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <p class="section-title">Sobre a família</p>
+      <p class="section-sub">Essas perguntas ajudam a definir a ordem de prioridade na fila. Responda com sinceridade — não há resposta certa ou errada.</p>
+      <div id="lista-perguntas"></div>
+    </div>
+
+    <div id="form-banner" style="margin-top:14px;"></div>
+
+    <div class="sticky-cta">
+      <button type="submit" id="btn-enviar" class="btn btn-primary btn-block">Enviar inscrição</button>
+    </div>
+  </form>
+</main>
+
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script>App.initInscricao();</script>
+</body>
+</html>

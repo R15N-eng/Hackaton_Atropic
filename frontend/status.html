@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Status da matrícula — Creche RJ</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand"><span class="mark">🎒</span> Inscrição Creche</div>
+  <div class="stepper" aria-hidden="true">
+    <span class="step done"></span>
+    <span class="step done"></span>
+    <span class="step done"></span>
+    <span class="step active"></span>
+  </div>
+  <p class="stepper-label">Etapa 4 de 4 — Status da matrícula</p>
+</header>
+
+<main class="container">
+  <p class="eyebrow">Status</p>
+  <h1 class="page-title">Matrícula</h1>
+  <p class="page-lede">O resultado final da sua inscrição.</p>
+
+  <div id="conteudo-status"></div>
+</main>
+
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script>App.initStatus();</script>
+</body>
+</html>

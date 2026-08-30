@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Comprovação de documentos — Creche RJ</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand"><span class="mark">🎒</span> Inscrição Creche</div>
+  <div class="stepper" aria-hidden="true">
+    <span class="step done"></span>
+    <span class="step active"></span>
+    <span class="step"></span>
+    <span class="step"></span>
+  </div>
+  <p class="stepper-label">Etapa 2 de 4 — Comprovação de documentos</p>
+</header>
+
+<main class="container">
+  <p class="eyebrow">Comprovação</p>
+  <h1 class="page-title">Para onde levar os documentos</h1>
+  <p class="page-lede">Escolhemos a unidade entre as suas preferências mais perto do bairro informado. Você pode trocar se preferir.</p>
+
+  <div id="conteudo-verificacao"></div>
+
+  <div class="sticky-cta">
+    <button type="button" id="cta-continuar" class="btn btn-primary btn-block">Continuar e acompanhar minha fila</button>
+  </div>
+</main>
+
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script>App.initVerificacao();</script>
+</body>
+</html>
