@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Consultar vaga na creche — Match Carioca</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="motor.css">
+<style>
+  /* específico da tela Família: mais ar, blocos maiores, leitura confortável */
+  .resultado-topo {
+    background: var(--navy); color: #fff; border-radius: var(--r-l) var(--r-l) 0 0;
+    padding: 22px 24px;
+  }
+  .resultado-topo .unidade {
+    font-family: var(--titulo); font-weight: 800; font-size: 21px; line-height: 1.25;
+    margin-top: 9px;
+  }
+  .resultado-topo .turma { color: var(--ciano-claro); font-size: 14px; font-weight: 600; margin-top: 3px; }
+  .resultado-corpo {
+    background: var(--branco); border: 1px solid var(--borda); border-top: none;
+    border-radius: 0 0 var(--r-l) var(--r-l); padding: 22px 24px;
+  }
+  .frase-grande {
+    font-family: var(--titulo); font-weight: 700; font-size: 17px;
+    color: var(--navy); line-height: 1.4;
+  }
+  .explicacao { font-size: 15px; color: var(--ink-2); line-height: 1.65; margin-top: 12px; }
+  .explicacao .destaque-num {
+    font-family: var(--mono); font-weight: 600; color: var(--navy);
+    background: #e7f3fb; padding: 1px 6px; border-radius: var(--r-s);
+  }
+  .caixa-pontos {
+    background: var(--card); border-radius: var(--r-m); padding: 15px 18px; margin-top: 18px;
+    display: flex; gap: 26px; flex-wrap: wrap;
+  }
+  .caixa-pontos .item .rotulo {
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--ink-3);
+  }
+  .caixa-pontos .item .valor {
+    font-family: var(--mono); font-size: 24px; font-weight: 600; color: var(--navy); line-height: 1.15;
+  }
+  .lista-espera-opcoes { margin-top: 18px; }
+  .opcao-espera {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    background: var(--branco); border: 1px solid var(--borda); border-radius: var(--r-m);
+    padding: 13px 16px;
+  }
+  .opcao-espera + .opcao-espera { margin-top: 8px; }
+  .opcao-espera .qual { font-size: 14px; font-weight: 600; color: var(--navy); }
+  .opcao-espera .detalhe { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+  .opcao-espera .pos { text-align: right; flex: none; }
+  .opcao-espera .pos .n { font-family: var(--mono); font-size: 22px; font-weight: 600; color: var(--navy); line-height: 1; }
+  .opcao-espera .pos .de { font-size: 11.5px; color: var(--ink-3); }
+  .duvidas { margin-top: 30px; }
+  .duvida { border-radius: var(--r-m); overflow: hidden; }
+  .duvida + .duvida { margin-top: 7px; }
+  .duvida summary {
+    background: var(--navy-faq); color: #fff; padding: 13px 17px; cursor: pointer;
+    font-family: var(--titulo); font-weight: 600; font-size: 14px; list-style: none;
+    display: flex; justify-content: space-between; gap: 12px; align-items: center;
+  }
+  .duvida summary::-webkit-details-marker { display: none; }
+  .duvida summary::after { content: "+"; font-size: 19px; font-weight: 400; flex: none; }
+  .duvida[open] summary::after { content: "–"; }
+  .duvida .resposta {
+    background: var(--branco); border: 1px solid var(--borda); border-top: none;
+    padding: 15px 17px; font-size: 14px; color: var(--ink-2); line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="barra-topo">
+  <div class="interno">
+    <span class="orgao"><b>Prefeitura do Rio</b> · Secretaria Municipal de Educação</span>
+    <span>Protótipo — Claude Impact Lab 2026</span>
+  </div>
+</div>
+
+<header class="cabecalho">
+  <div class="interno">
+    <div class="marca">
+      <span class="match">Match</span><span class="carioca">Carioca</span>
+      <span class="selo">Vaga em creche</span>
+    </div>
+    <nav class="perfis" aria-label="Perfil de acesso">
+      <a href="familia.html" aria-current="page">Família</a>
+      <a href="sme.html">SME / CRE</a>
+    </nav>
+  </div>
+</header>
+
+<main class="conteudo estreito">
+  <div class="faixa-titulo">
+    <span class="barra" aria-hidden="true"></span>
+    <div>
+      <h1 class="pagina">Consultar a vaga da sua criança</h1>
+      <p class="subtitulo">Veja se a vaga foi garantida, em qual creche, e sua posição na fila
+        das outras opções que você escolheu.</p>
+    </div>
+  </div>
+
+  <div class="cartao cartao-cinza">
+    <div class="linha-form">
+      <div class="campo">
+        <label for="seletor-crianca">Selecione a inscrição</label>
+        <select class="entrada" id="seletor-crianca">
+          <option value="">Carregando inscrições…</option>
+        </select>
+      </div>
+      <div class="campo" style="flex:0 0 auto;">
+        <label for="campo-codigo">ou digite o código</label>
+        <input class="entrada mono" id="campo-codigo" placeholder="aluno_0064706" style="min-width:190px;">
+      </div>
+      <button class="botao botao-primario" id="btn-consultar">Consultar</button>
+    </div>
+    <p class="secao-nota" style="margin-top:10px;">
+      Não há login neste protótipo. Os códigos são identificadores anonimizados
+      do processo de 2025 — nenhum dado pessoal real é exibido.
+    </p>
+  </div>
+
+  <div id="resultado" style="margin-top:22px;"></div>
+
+  <section class="duvidas">
+    <div class="secao-cabeca">
+      <h2 class="secao-titulo">Dúvidas frequentes</h2>
+    </div>
+
+    <details class="duvida">
+      <summary>Como a ordem da fila é definida?</summary>
+      <div class="resposta">
+        Por pontuação. Cada critério que a família declara e comprova vale um número de
+        pontos definido pela SME — em 2025, estar no CadÚnico valia 51 dos 100 pontos
+        possíveis. Quem tem mais pontos entra primeiro. Em caso de empate, um sorteio
+        único e reproduzível decide, o mesmo para todas as creches.
+      </div>
+    </details>
+
+    <details class="duvida">
+      <summary>Tenho vaga na minha 3ª opção. Ainda posso conseguir a 1ª?</summary>
+      <div class="resposta">
+        Sim. Sua vaga atual está garantida e você continua na fila das opções que
+        prefere. Se alguém à sua frente não confirmar a matrícula, a fila anda e você
+        pode ser chamada para uma opção melhor — sem perder a que já tem.
+      </div>
+    </details>
+
+    <details class="duvida">
+      <summary>Por que minha ordem de preferência importa?</summary>
+      <div class="resposta">
+        Porque o sistema aloca por criança, não por opção: você ocupa no máximo uma
+        vaga por vez, na melhor opção possível para a sua pontuação. Declarar a ordem
+        verdadeira é sempre a melhor escolha — não existe vantagem em "chutar" uma
+        creche menos concorrida.
+      </div>
+    </details>
+
+    <details class="duvida">
+      <summary>O que acontece se eu não comprovar um dos critérios?</summary>
+      <div class="resposta">
+        Só aquele critério sai da conta. Sua pontuação é recalculada sem ele e sua
+        posição pode mudar — mas isso não zera sua pontuação nem cancela sua inscrição.
+      </div>
+    </details>
+  </section>
+</main>
+
+<footer class="rodape">
+  <div class="interno">
+    <div class="bloco">
+      <b>Sobre os dados</b>
+      Os dados deste protótipo passaram por processo de anonimização da SME
+      (aleatorização, generalização e supressão). <span class="destaque">Os indicadores
+      não representam a realidade</span> — ilustram a dinâmica do processo de inscrição
+      em creche de 2021 a 2025.
+    </div>
+    <div class="bloco">
+      <b>Match Carioca</b>
+      Protótipo desenvolvido no Claude Impact Lab Rio #2, inspirado na identidade visual
+      da Prefeitura do Rio. Não é um serviço oficial da Prefeitura nem uma extensão do
+      site matricula.rio.
+    </div>
+  </div>
+</footer>
+
+<script src="motor-api.js"></script>
+<script>
+(function () {
+  const elResultado = UI.qs("#resultado");
+  const elSeletor = UI.qs("#seletor-crianca");
+  const elCodigo = UI.qs("#campo-codigo");
+  const btn = UI.qs("#btn-consultar");
+
+  /* ---------------- carregar o seletor de inscrições ---------------- */
+
+  async function carregarSeletor() {
+    try {
+      const lista = await Motor.criancasExemplo(12);
+      if (!lista.length) {
+        elSeletor.innerHTML = '<option value="">Nenhuma inscrição disponível</option>';
+        return;
+      }
+      elSeletor.innerHTML =
+        '<option value="">Escolha uma inscrição…</option>' +
+        lista.map((c) => {
+          const rotulo = c.status === "dentro_do_corte"
+            ? `${c.aluno_anon} — ${c.score} pts — com vaga`
+            : `${c.aluno_anon} — ${c.score} pts — na fila (${c.posicao_na_lista_espera}º)`;
+          return `<option value="${c.aluno_anon}">${rotulo}</option>`;
+        }).join("");
+    } catch (err) {
+      elSeletor.innerHTML = '<option value="">Não foi possível carregar</option>';
+      elResultado.innerHTML = UI.erro(UI.mensagemErro(err));
+      ligarRetentar();
+    }
+  }
+
+  /* ---------------- explicação em linguagem simples ---------------- */
+
+  function fraseDoScore(c) {
+    // tradução do dado real: não recalcula nada, só explica o número
+    if (c.cadunico) {
+      return `Sua pontuação é <span class="destaque-num">${c.score}</span> pontos.
+        Isso inclui os <span class="destaque-num">51</span> pontos por estar inscrita
+        no CadÚnico, o critério de maior peso na régua da SME em 2025.`;
+    }
+    if (c.score > 0) {
+      return `Sua pontuação é <span class="destaque-num">${c.score}</span> pontos,
+        somando os critérios que você declarou. A inscrição no CadÚnico, que vale
+        <span class="destaque-num">51</span> pontos, não foi declarada.`;
+    }
+    return `Sua pontuação é <span class="destaque-num">0</span> pontos — nenhum dos
+      critérios de prioridade da SME foi declarado nesta inscrição. A ordem na fila
+      é definida pelo sorteio único do processo.`;
+  }
+
+  function blocoAlocada(c) {
+    const cod = UI.codigoDe(c.programa_alocado);
+    const prefTxt = c.pref_atendida === 1
+      ? "Foi a sua <b>1ª opção</b> — a creche que você mais queria."
+      : `Foi a sua <b>${c.pref_atendida}ª opção</b>.`;
+
+    let aindaNaFila = "";
+    if (c.esperando_por && c.esperando_por.length) {
+      aindaNaFila = `
+        <div class="lista-espera-opcoes">
+          <p class="frase-grande" style="font-size:15px;">E você continua na fila das opções que prefere:</p>
+          ${c.esperando_por.map((e) => `
+            <div class="opcao-espera">
+              <div>
+                <div class="qual">${e.pref}ª opção · Unidade ${UI.codigoDe(e.programa)}</div>
+                <div class="detalhe">${UI.rotuloTurma(e.programa)} · corte atual
+                  ${e.nota_de_corte_atual === null ? "não definido" : e.nota_de_corte_atual + " pts"}</div>
+              </div>
+              <div class="pos">
+                <div class="n">${e.posicao}º</div>
+                <div class="de">de ${UI.num(e.total_na_fila)}</div>
+              </div>
+            </div>`).join("")}
+          <p class="explicacao" style="font-size:13.5px;">
+            Se alguém à frente não confirmar a matrícula, a fila anda e você pode ser
+            chamada para uma dessas opções — <b>sem perder a vaga que já tem</b>.
+          </p>
+        </div>`;
+    }
+
+    return `
+      <div class="resultado-topo">
+        <span class="selo-status st-alocada">Vaga garantida</span>
+        <div class="unidade">Unidade ${cod}</div>
+        <div class="turma">${UI.rotuloTurma(c.programa_alocado)}</div>
+      </div>
+      <div class="resultado-corpo">
+        <p class="frase-grande">A vaga da sua criança está garantida nesta creche.</p>
+        <p class="explicacao">${prefTxt} ${fraseDoScore(c)}</p>
+        <div class="caixa-pontos">
+          <div class="item"><div class="rotulo">Sua pontuação</div><div class="valor">${c.score}</div></div>
+          <div class="item"><div class="rotulo">Opção atendida</div><div class="valor">${c.pref_atendida}ª</div></div>
+          <div class="item"><div class="rotulo">Opções declaradas</div><div class="valor">${c.opcoes.length}</div></div>
+        </div>
+        ${aindaNaFila}
+      </div>`;
+  }
+
+  function blocoEspera(c) {
+    const melhor = c.esperando_por && c.esperando_por.length ? c.esperando_por[0] : null;
+    const corte = melhor && melhor.nota_de_corte_atual !== null ? melhor.nota_de_corte_atual : null;
+
+    let comparacao = "";
+    if (corte !== null) {
+      const falta = Math.max(0, corte - c.score);
+      comparacao = falta > 0
+        ? `Nesta creche, a pontuação de entrada está em
+           <span class="destaque-num">${corte}</span> pontos — <b>${falta} ponto${falta === 1 ? "" : "s"}
+           acima da sua</b>.`
+        : `Sua pontuação já alcança o corte de <span class="destaque-num">${corte}</span>
+           pontos desta creche; a vaga depende de alguém à frente não confirmar.`;
+    }
+
+    return `
+      <div class="resultado-topo" style="background:var(--navy-escuro);">
+        <span class="selo-status st-espera">Lista de espera</span>
+        <div class="unidade">${melhor ? "Unidade " + UI.codigoDe(melhor.programa) : "Sua 1ª opção"}</div>
+        <div class="turma">${melhor ? UI.rotuloTurma(melhor.programa) : ""}</div>
+      </div>
+      <div class="resultado-corpo">
+        <p class="frase-grande">
+          ${melhor
+            ? `Você está na posição <span class="mono">${melhor.posicao}º</span>
+               de ${UI.num(melhor.total_na_fila)} nesta fila.`
+            : "Você está na lista de espera."}
+        </p>
+        <p class="explicacao">${fraseDoScore(c)} ${comparacao}</p>
+        <div class="caixa-pontos">
+          <div class="item"><div class="rotulo">Sua pontuação</div><div class="valor">${c.score}</div></div>
+          ${melhor ? `<div class="item"><div class="rotulo">Sua posição</div><div class="valor">${melhor.posicao}º</div></div>
+          <div class="item"><div class="rotulo">Corte atual</div><div class="valor">${corte === null ? "—" : corte}</div></div>` : ""}
+          <div class="item"><div class="rotulo">Opções declaradas</div><div class="valor">${c.opcoes.length}</div></div>
+        </div>
+        ${c.esperando_por && c.esperando_por.length > 1 ? `
+          <div class="lista-espera-opcoes">
+            <p class="frase-grande" style="font-size:15px;">Suas outras opções:</p>
+            ${c.esperando_por.slice(1).map((e) => `
+              <div class="opcao-espera">
+                <div>
+                  <div class="qual">${e.pref}ª opção · Unidade ${UI.codigoDe(e.programa)}</div>
+                  <div class="detalhe">${UI.rotuloTurma(e.programa)} · corte atual
+                    ${e.nota_de_corte_atual === null ? "não definido" : e.nota_de_corte_atual + " pts"}</div>
+                </div>
+                <div class="pos"><div class="n">${e.posicao}º</div><div class="de">de ${UI.num(e.total_na_fila)}</div></div>
+              </div>`).join("")}
+          </div>` : ""}
+        <div class="aviso aviso-info" style="margin-top:18px;">
+          <span aria-hidden="true">i</span>
+          <span>A fila é atualizada quando famílias à frente não confirmam a matrícula.
+          Você não precisa fazer nada agora — se for chamada, será avisada.</span>
+        </div>
+      </div>`;
+  }
+
+  /* ---------------- consulta ---------------- */
+
+  async function consultar(alunoAnon) {
+    if (!alunoAnon) {
+      elResultado.innerHTML = UI.vazio(
+        "Selecione uma inscrição",
+        "Escolha uma inscrição na lista acima ou digite o código para ver o resultado."
+      );
+      return;
+    }
+    elResultado.innerHTML = UI.carregando("Consultando a fila…");
+    btn.disabled = true;
+    try {
+      const c = await Motor.crianca(alunoAnon.trim());
+      elResultado.innerHTML = c.programa_alocado ? blocoAlocada(c) : blocoEspera(c);
+    } catch (err) {
+      elResultado.innerHTML = UI.erro(UI.mensagemErro(err));
+      ligarRetentar(alunoAnon);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function ligarRetentar(alunoAnon) {
+    const b = UI.qs('[data-acao="retentar"]', elResultado);
+    if (b) b.addEventListener("click", () => alunoAnon ? consultar(alunoAnon) : iniciar());
+  }
+
+  btn.addEventListener("click", () => {
+    consultar(elCodigo.value.trim() || elSeletor.value);
+  });
+  elCodigo.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); btn.click(); }
+  });
+  elSeletor.addEventListener("change", () => {
+    elCodigo.value = "";
+    if (elSeletor.value) consultar(elSeletor.value);
+  });
+
+  async function iniciar() {
+    elResultado.innerHTML = UI.vazio(
+      "Selecione uma inscrição",
+      "Escolha uma inscrição na lista acima ou digite o código para ver o resultado."
+    );
+    await carregarSeletor();
+  }
+
+  iniciar();
+})();
+</script>
+</body>
+</html>
