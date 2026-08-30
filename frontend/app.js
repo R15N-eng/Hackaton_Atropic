@@ -568,14 +568,24 @@ App.initClassificacao = function () {
                 <b>${r.programa_nome}</b>${r.bairro ? ` <span class="section-sub" style="margin:0;">· ${r.bairro}</span>` : ""}
                 <span class="section-sub" style="display:block;margin:2px 0 0;">${r.motivo}</span>
               </span>
-              <span class="badge badge-${r.chance === "alta" ? "alta" : "media"}" style="flex:none;">
-                ${r.chance === "alta" ? "Chance alta" : "Chance média"}
+              <span style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none;">
+                <span class="badge badge-${r.chance === "alta" ? "alta" : "media"}">
+                  ${r.chance === "alta" ? "Chance alta" : "Chance média"}
+                </span>
+                <button type="button" class="btn btn-secondary btn-sm" data-adicionar-recomendacao="${r.programa_id}">Adicionar</button>
               </span>
             </div>`).join("")}
         </div>
         <p class="section-sub" style="margin-top:8px;">
-          Quer incluir alguma delas? Use <b>Gerenciar minhas opções</b> acima.
+          Clique em <b>Adicionar</b> para incluir na sua lista — você escolhe a turma e o
+          turno antes de confirmar.
         </p>`;
+
+      App.qsa("[data-adicionar-recomendacao]", area).forEach((btn) => {
+        btn.addEventListener("click", () => {
+          abrirModoTroca(dadosAtuais.classificacoes, btn.dataset.adicionarRecomendacao);
+        });
+      });
     } catch (_) {
       // silencioso de proposito: recomendacao e extra, nao vale poluir a tela
       // com erro de algo que a familia nao pediu
@@ -583,10 +593,10 @@ App.initClassificacao = function () {
     }
   }
 
-  async function abrirModoTroca(classificacoes) {
+  async function abrirModoTroca(classificacoes, preSelecionarUnidade) {
     modoTroca = true;
     ordemEmEdicao = classificacoes.map((c) => ({ ...c.programa }));
-    novaSelecao = { unidade: "", grupamento: "", turno: "" };
+    novaSelecao = { unidade: preSelecionarUnidade ? String(preSelecionarUnidade) : "", grupamento: "", turno: "" };
     previewResultado = null;
 
     const area = App.qs("#area-troca");
@@ -597,6 +607,7 @@ App.initClassificacao = function () {
       unidadesCatalogo = [];
     }
     renderModoTroca();
+    if (preSelecionarUnidade && area) area.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function renderModoTroca() {
