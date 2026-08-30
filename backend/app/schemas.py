@@ -83,6 +83,20 @@ class ProgramaOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PreferenciaAdicionarIn(BaseModel):
+    programa_id: int
+    faixa_etaria: str = ""
+    turno: str = ""
+
+
+class PreVisualizacaoOut(BaseModel):
+    programa_id: int
+    programa_nome: str
+    posicao_hipotetica: int
+    total_na_fila_hipotetico: int
+    capacidade: int
+
+
 class StatusMatriculaOut(BaseModel):
     status: str
     unidade: str | None

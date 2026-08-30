@@ -7,6 +7,8 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from twilio.twiml.messaging_response import MessagingResponse
 
+import seed_data  # script na raiz de backend/, nao faz parte do pacote app
+
 from app import classification_engine, config, crud, models, schemas, scheduler, whatsapp
 from app.database import get_db, init_db
 
@@ -25,6 +27,7 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    seed_data.seed()  # idempotente -- sobe com dados de exemplo em deploys "do zero" (ex: Render)
     scheduler.iniciar_scheduler()
 
 
@@ -226,6 +229,102 @@ def status_matricula(crianca_id: int, db: Session = Depends(get_db)):
     return schemas.StatusMatriculaOut(status="aguardando", unidade=None, prazo_matricula=None)
 
 
+def _garantir_dentro_da_janela(crianca: models.Crianca) -> None:
+    """Bloqueia mudanca de preferencias fora da janela de N dias a partir da
+    1a escolha (verificacao de documentos) -- mesma regra usada em
+    /escolher_unidade, tambem aplicada em /preferencias/*."""
+    if crianca.escolhido_em is not None:
+        prazo = crianca.escolhido_em + dt.timedelta(days=config.JANELA_TROCA_DIAS)
+        if dt.datetime.utcnow() > prazo:
+            raise HTTPException(400, f"Janela de troca de {config.JANELA_TROCA_DIAS} dias encerrada")
+
+
+@app.get(
+    "/classificacao/{crianca_id}/pre-visualizar/{programa_id}",
+    response_model=schemas.PreVisualizacaoOut,
+)
+def pre_visualizar_posicao(crianca_id: int, programa_id: int, db: Session = Depends(get_db)):
+    """Mostra em que posicao a crianca ficaria numa unidade ANTES de ela ser
+    adicionada as preferencias -- usado pela tela de classificacao para a
+    familia decidir se vale a pena adicionar essa opcao a lista."""
+    crianca = db.get(models.Crianca, crianca_id)
+    if crianca is None:
+        raise HTTPException(404, "Crianca nao encontrada")
+    programa = db.get(models.Programa, programa_id)
+    if programa is None:
+        raise HTTPException(404, "Programa nao encontrado")
+
+    posicao, total = classification_engine.posicao_hipotetica(crianca_id, programa_id, db)
+    return schemas.PreVisualizacaoOut(
+        programa_id=programa.id,
+        programa_nome=programa.nome,
+        posicao_hipotetica=posicao,
+        total_na_fila_hipotetico=total,
+        capacidade=programa.capacidade,
+    )
+
+
+@app.post("/preferencias/{crianca_id}/adicionar", response_model=schemas.InscricaoOut)
+def adicionar_preferencia(
+    crianca_id: int, dados: schemas.PreferenciaAdicionarIn, db: Session = Depends(get_db)
+):
+    """Adiciona uma nova unidade a lista de preferencias (max 5) -- diferente
+    de /escolher_unidade, que so troca qual das preferencias JA existentes
+    esta ativa."""
+    crianca = db.get(models.Crianca, crianca_id)
+    if crianca is None:
+        raise HTTPException(404, "Crianca nao encontrada")
+    _garantir_dentro_da_janela(crianca)
+
+    if len(crianca.preferencias) >= 5:
+        raise HTTPException(400, "Ja existem 5 preferencias cadastradas (o maximo permitido)")
+    if any(p.programa_id == dados.programa_id for p in crianca.preferencias):
+        raise HTTPException(400, "Essa unidade ja esta entre as preferencias")
+    if db.get(models.Programa, dados.programa_id) is None:
+        raise HTTPException(404, "Programa nao encontrado")
+
+    db.add(
+        models.Preferencia(
+            crianca_id=crianca.id,
+            programa_id=dados.programa_id,
+            ordem=len(crianca.preferencias) + 1,
+            faixa_etaria=dados.faixa_etaria,
+            turno=dados.turno,
+        )
+    )
+    db.commit()
+    db.refresh(crianca)
+    return _serializar_inscricao(crianca)
+
+
+@app.delete("/preferencias/{crianca_id}/{programa_id}", response_model=schemas.InscricaoOut)
+def remover_preferencia(crianca_id: int, programa_id: int, db: Session = Depends(get_db)):
+    """Remove uma unidade da lista de preferencias. Se ela era a unidade
+    ativa (programa_escolhido_id), a 1a preferencia restante assume o lugar."""
+    crianca = db.get(models.Crianca, crianca_id)
+    if crianca is None:
+        raise HTTPException(404, "Crianca nao encontrada")
+    _garantir_dentro_da_janela(crianca)
+
+    if len(crianca.preferencias) <= 1:
+        raise HTTPException(400, "Nao e possivel remover a unica opcao restante")
+    preferencia = next((p for p in crianca.preferencias if p.programa_id == programa_id), None)
+    if preferencia is None:
+        raise HTTPException(404, "Essa unidade nao esta entre as preferencias")
+
+    crianca.preferencias.remove(preferencia)  # cascade="all, delete-orphan" apaga a linha
+    for nova_ordem, p in enumerate(sorted(crianca.preferencias, key=lambda p: p.ordem), start=1):
+        p.ordem = nova_ordem
+
+    if crianca.programa_escolhido_id == programa_id:
+        crianca.programa_escolhido_id = crianca.preferencias[0].programa_id if crianca.preferencias else None
+
+    db.add(crianca)
+    db.commit()
+    db.refresh(crianca)
+    return _serializar_inscricao(crianca)
+
+
 @app.post("/escolher_unidade", response_model=schemas.ClassificacaoOut)
 def escolher_unidade(crianca_id: int, programa_id: int, db: Session = Depends(get_db)):
     """Troca a unidade escolhida, respeitando a janela de N dias definida em
@@ -235,10 +334,7 @@ def escolher_unidade(crianca_id: int, programa_id: int, db: Session = Depends(ge
         raise HTTPException(404, "Crianca nao encontrada")
     if programa_id not in [p.programa_id for p in crianca.preferencias]:
         raise HTTPException(400, "programa_id nao esta entre as preferencias da crianca")
-    if crianca.escolhido_em is not None:
-        prazo = crianca.escolhido_em + dt.timedelta(days=config.JANELA_TROCA_DIAS)
-        if dt.datetime.utcnow() > prazo:
-            raise HTTPException(400, f"Janela de troca de {config.JANELA_TROCA_DIAS} dias encerrada")
+    _garantir_dentro_da_janela(crianca)
     crianca.programa_escolhido_id = programa_id
     db.add(crianca)
     db.commit()

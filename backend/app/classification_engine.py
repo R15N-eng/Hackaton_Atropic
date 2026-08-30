@@ -85,6 +85,35 @@ def posicao_na_fila(crianca_id: int, programa_id: int, db: Session) -> tuple[int
     return 0, total
 
 
+def posicao_hipotetica(crianca_id: int, programa_id: int, db: Session) -> tuple[int, int]:
+    """Como posicao_na_fila, mas funciona mesmo se a crianca AINDA NAO tem
+    esse programa entre as preferencias -- usado para pre-visualizar a
+    posicao antes de a familia decidir adicionar uma nova unidade a lista
+    (tela de classificacao, botao "adicionar unidade")."""
+    crianca = db.get(models.Crianca, crianca_id)
+    if crianca is None:
+        return 0, 0
+
+    candidatos = (
+        db.query(models.Crianca)
+        .join(models.Preferencia, models.Preferencia.crianca_id == models.Crianca.id)
+        .filter(
+            models.Preferencia.programa_id == programa_id,
+            models.Crianca.status.notin_([models.StatusInscricao.CANCELADO.value]),
+        )
+        .distinct()
+        .all()
+    )
+    if not any(c.id == crianca.id for c in candidatos):
+        candidatos.append(crianca)
+    candidatos.sort(key=lambda c: (-(c.score or 0), c.id))
+    total = len(candidatos)
+    for posicao, c in enumerate(candidatos, start=1):
+        if c.id == crianca.id:
+            return posicao, total
+    return 0, total
+
+
 def reclassificar(db: Session) -> list[int]:
     """Recalcula a fila de todos os programas.
 
