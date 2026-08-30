@@ -220,8 +220,69 @@ não é barreira real se `vagas_livres > 0`). `classificar_programa` também
 passou a rejeitar `crianca_id` duplicado, mesma regra do
 `deferred_acceptance`.
 
-Ainda falta nesta linha: um `reclassificar` equivalente (o que acontece quando
-uma vaga muda de mão) e a ponte com dado real (geocoding CEP/bairro → lat/lon).
+**Geocodificação da unidade já resolvida** — `build_data.py` cruza
+`OferecimentosEvagas/Unidades_Unificadas_com_Localizacao.xlsx` (base auxiliar
+da SME, fora da extração Query A/B/C) e popula `Programa.localizacao` de
+verdade (~57% dos programas casam por `unidade`; o resto fica `None`, sem
+inventar coordenada). **Ainda falta a localização do lado da família**:
+`Candidato.localizacoes` continua `None` — as bases só têm bairro/CEP em
+texto, sem lat/lon do responsável, e não há uma base auxiliar equivalente
+para isso ainda.
+
+O "`reclassificar` equivalente" saiu da lista de pendências — virou o motor
+de rodadas abaixo, que é o formato real do processo (multi-ciclo), não uma
+reclassificação pontual.
+
+## Motor de rodadas (`rodadas.py`)
+
+O processo real não é uma classificação única: é um ciclo de **rodadas**. A
+cada rodada, a família se inscreve com preferências (novas a cada rodada,
+não as mesmas de antes); diariamente uma página de classificação mostra
+posição/situação; depois de uma janela (ex.: 5 dias) a rodada fecha — quem
+tem vaga é notificado, quem não tem entra na rodada seguinte com preferências
+novas, sobre a capacidade que sobrou. Repete até a última rodada, decidida
+por fora (calendário) — o motor não sabe quantas rodadas vai ter.
+
+**A peça nova é a prioridade.** No motor da régua (`deferred_acceptance.py`),
+a prioridade de uma criança é a mesma em qualquer programa (só depende do
+`Score.total`, que não varia por escola). Aqui, cada rodada usa
+`vulnerabilidade.calcular_score(candidato, programa)` como prioridade — e
+como a distância muda de programa para programa, **a mesma dupla de
+candidatos pode inverter de ordem entre dois programas** (quem mora perto de
+A ganha A; quem mora perto de B ganha B, mesmo que os dois preferissem A).
+Isso não é possível com um rank global pré-calculado, então
+`deferred_acceptance_por_pontuacao` reescreve o miolo do algoritmo: cada
+proposta é comparada com a pontuação calculada NAQUELE momento, para aquele
+par — não um rank fixo de antemão.
+
+`ProgramaAlocado` ganhou um campo `scores` (opcional, `None` por padrão) só
+para isso: guarda a pontuação exata usada para admitir cada criança naquele
+programa, porque recalcular com pesos diferentes por engano faria o corte
+mentir (mesmo motivo do `scores` em `ProgramaClassificado`). É por isso que
+`rodadas.nota_corte_atual`/`posicao_na_fila` são funções **próprias deste
+módulo** — as de `fila.py` leem `Score.total` e dariam um número errado aqui.
+`rodadas.nota_corte_atual` levanta erro claro se receber um `ProgramaAlocado`
+que veio do motor da régua (`scores=None`), em vez de silenciosamente devolver
+um número sem sentido.
+
+**`programas_para_proxima_rodada(alocacao)`** monta os `Programa` da rodada
+seguinte: os mesmos, com `vagas` = `vagas_livres` da rodada que fechou — quem
+já entrou não compete de novo.
+
+**`alocar_vagas_remanescentes(candidatos, programas)`** é a última rodada,
+que é qualitativamente diferente das outras: o objetivo deixa de ser
+"respeitar a preferência da família" (já tentado sem sucesso nas rodadas
+anteriores) e vira "não deixar vaga vazia". Por isso ela **ignora**
+`Candidato.preferencias` e aloca greedy pelo programa de menor distância
+entre os que ainda têm vaga, atendendo por `pontuacao_vulnerabilidade`
+decrescente (empate por sorteio). Não é Deferred Acceptance — sem
+preferências não há estabilidade a garantir, é só um preenchimento por
+proximidade. Devolve `{crianca_id: programa_id}`, não uma `Alocacao` — quem
+não coube simplesmente não aparece no dict.
+
+Este motor **não decide calendário, não notifica, não guarda estado entre
+chamadas** — cada rodada é uma chamada pura. Orquestrar quando abre/fecha uma
+rodada e quantas existem é responsabilidade de quem chama (o backend).
 
 ## Trocando o pipeline
 

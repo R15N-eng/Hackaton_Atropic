@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from . import contrato as C
+from .localizacao import Localizacao
 from .modelos import SEM_DATA, Candidato, Programa, ReguaDoAno, Score
 
 RAIZ = Path(__file__).resolve().parent.parent  # raiz do repo Hackaton_Atropic
@@ -160,9 +161,21 @@ def carregar_programas(
             nome_unidade=linha.get(C.COL_NOME_UNIDADE),
             grupamento=linha.get(C.COL_GRUPAMENTO),
             horario=linha.get(C.COL_HORARIO),
+            localizacao=_localizacao_da_linha(linha),
         )
         for linha in tabela.to_dict("records")
     ]
+
+
+def _localizacao_da_linha(linha) -> Optional[Localizacao]:
+    """`None` se o parquet nao tem lat/lon (build antigo, sem geocodificacao)
+    ou a unidade nao casou com a base de enderecos (~43% hoje nao casam)."""
+    lat, lon = linha.get(C.COL_LAT), linha.get(C.COL_LON)
+    if lat is None or lon is None:
+        return None
+    if _pandas().isna(lat) or _pandas().isna(lon):
+        return None
+    return Localizacao(latitude=float(lat), longitude=float(lon))
 
 
 def carregar_candidatos(

@@ -1,8 +1,9 @@
 """Gera data/opcoes.parquet e data/programas.parquet a partir dos CSVs reais.
 
-Existe porque o `01_build_aggregates.py` do pipeline nao esta no repositorio: sem
-os parquets os testes nao rodam contra dado real. Se o pipeline oficial entrar,
-apague este arquivo -- o contrato que ele materializa esta em `contrato.py`, e e o
+Existe um pipeline equivalente em `backend/pipeline/01_build_aggregates.py`
+(de outra frente do time, so para o ano de 2025). Este arquivo cobre os 5
+anos e preserva `desempates` por pergunta (nao so o score somado) -- e o
+motivo de manter os dois: o contrato de dados esta em `contrato.py`, e e o
 unico ponto de acoplamento.
 
     python -m pessoa_1.build_data              # todos os anos
@@ -11,6 +12,12 @@ unico ponto de acoplamento.
 DuckDB le os .gz direto e agrega sem carregar a Query B (4,3 M linhas) na memoria.
 O SQL e um so: roda pelo modulo `duckdb` quando ele existe, senao pelo binario
 `duckdb` do PATH (util em plataformas sem wheel, como o Python do MSYS2).
+
+Tambem cruza `OferecimentosEvagas/Unidades_Unificadas_com_Localizacao.xlsx`
+(base auxiliar da SME, fora da extracao Query A/B/C) para geocodificar as
+unidades -- ver `preparar_geo_unidades`. So popula `Programa.localizacao`;
+o lado da familia (`Candidato.localizacoes`) continua sem geocodificacao,
+essa base nao tem lat/lon do responsavel.
 """
 
 from __future__ import annotations
@@ -18,24 +25,80 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .carga import DIR_BASES, DIR_DADOS, _ler_parquet, executar_duckdb
+from .carga import DIR_BASES, DIR_DADOS, _ler_parquet, _pandas, executar_duckdb
 from .contrato import SITUACAO_COM_VAGA
 
 QUERY_A = DIR_BASES / "01_QueryA_InscricoesPorAno.csv.gz"
 QUERY_B = DIR_BASES / "02_QueryB_RespostasSocioEconomicas.csv.gz"
 QUERY_C = DIR_BASES / "03_QueryC_PerguntasComDescricao.csv"
 
+# Geocodificacao real das unidades -- lat/lon/bairro/CRE por `unidade`. Nao
+# faz parte da extracao Query A/B/C do hackathon; e uma base auxiliar da SME
+# (a mesma que o pipeline de outra equipe do time ja usa). Casa por
+# `unidade` com zero-padding de 7 digitos -- confirmado 1.941 unidades
+# distintas, sem nulos em lat/lon na fonte.
+GEO_XLSX = (
+    DIR_BASES.parent / "OferecimentosEvagas" / "Unidades_Unificadas_com_Localizacao.xlsx"
+)
+
 
 def _sql_lista(valores) -> str:
     return ", ".join("'" + v.replace("'", "''") + "'" for v in sorted(valores))
 
 
-def montar_sql(ano: int | None, destino: Path) -> str:
+def preparar_geo_unidades(destino: Path) -> Path | None:
+    """Le o Excel de geocodificacao e grava um parquet intermediario, para o
+    join em SQL puro poder ler um arquivo em vez de um DataFrame em memoria
+    -- o fallback via binario `duckdb` (sem o modulo Python) so executa SQL
+    de arquivo, nao registra objeto Python.
+
+    None se o Excel nao existir -- geocodificacao e uma base auxiliar, opcional
+    (o build continua funcionando sem ela, so `Programa.localizacao` fica
+    `None`, como ja era antes desta extensao).
+
+    A coluna de microarea no Excel vem com acento na origem (`microárea`) --
+    acessada por posicao, nao por nome, para nao depender de a leitura
+    preservar exatamente aquele byte em todo ambiente.
+    """
+    if not GEO_XLSX.exists():
+        return None
+    pd = _pandas()
+    geo = pd.read_excel(GEO_XLSX, sheet_name="Unidades_Unificadas")
+    geo = geo.rename(columns={
+        geo.columns[0]: "unidade_raw",  # DESIGNACAO
+        geo.columns[1]: "cre",          # CRE
+        geo.columns[2]: "microarea",    # microárea
+        geo.columns[5]: "bairro_unidade",  # BAIRRO
+        geo.columns[6]: "lat",          # LATITUDE
+        geo.columns[7]: "lon",          # LONGITUDE
+    })
+    geo["unidade"] = geo["unidade_raw"].astype(str).str.strip().str.zfill(7)
+    geo = geo[["unidade", "cre", "microarea", "bairro_unidade", "lat", "lon"]]
+    geo = geo.drop_duplicates("unidade")
+
+    caminho = destino / "_geo_unidades.parquet"
+    geo.to_parquet(caminho, index=False)
+    return caminho
+
+
+def montar_sql(ano: int | None, destino: Path, geo_parquet: Path | None) -> str:
     """O script inteiro, em um lugar so. Fonte unica da verdade do build."""
     filtro_c = f"WHERE ano = {int(ano)}" if ano is not None else ""
     filtro_a = f"WHERE a.ano = {int(ano)}" if ano is not None else ""
 
+    if geo_parquet is not None:
+        geo_cte = f"SELECT * FROM read_parquet('{geo_parquet.as_posix()}')"
+    else:
+        geo_cte = (
+            "SELECT NULL::VARCHAR AS unidade, NULL::INTEGER AS cre, "
+            "NULL::VARCHAR AS microarea, NULL::VARCHAR AS bairro_unidade, "
+            "NULL::DOUBLE AS lat, NULL::DOUBLE AS lon WHERE FALSE"
+        )
+
     return f"""
+-- geocodificacao das unidades (lat/lon/bairro/CRE) -- ver preparar_geo_unidades
+CREATE OR REPLACE TABLE geo_unidades AS {geo_cte};
+
 -- regua de pontuacao (Query C)
 CREATE OR REPLACE TABLE regua AS
 SELECT
@@ -90,19 +153,30 @@ LEFT JOIN score s
 -- programas. `vagas` e a ocupacao observada: quantas criancas distintas
 -- terminaram o processo com vaga no programa. Proxy da capacidade
 -- parametrizada pela SME, que nao esta nas bases do hackathon.
+--
+-- lat/lon/bairro_unidade/cre/microarea vem de geo_unidades (join por
+-- `unidade`) -- nao fazem parte da extracao Query A/B/C. Ficam NULL quando o
+-- Excel de geocodificacao nao esta disponivel ou a unidade nao casa (o join
+-- e sempre LEFT, nunca reduz o numero de programas).
 CREATE OR REPLACE TABLE programas AS
 SELECT
-    programa_id,
-    any_value(ano) AS ano,
-    any_value(unidade) AS unidade,
-    any_value(nome_unidade) AS nome_unidade,
-    any_value(grupamento) AS grupamento,
-    any_value(horario) AS horario,
-    CAST(COUNT(DISTINCT crianca_id) FILTER (
-        WHERE situacao IN ({_sql_lista(SITUACAO_COM_VAGA)})
-    ) AS INTEGER) AS vagas
-FROM opcoes
-GROUP BY programa_id;
+    o.programa_id,
+    any_value(o.ano) AS ano,
+    any_value(o.unidade) AS unidade,
+    any_value(o.nome_unidade) AS nome_unidade,
+    any_value(o.grupamento) AS grupamento,
+    any_value(o.horario) AS horario,
+    CAST(COUNT(DISTINCT o.crianca_id) FILTER (
+        WHERE o.situacao IN ({_sql_lista(SITUACAO_COM_VAGA)})
+    ) AS INTEGER) AS vagas,
+    any_value(g.lat) AS lat,
+    any_value(g.lon) AS lon,
+    any_value(g.bairro_unidade) AS bairro_unidade,
+    any_value(g.cre) AS cre,
+    any_value(g.microarea) AS microarea
+FROM opcoes o
+LEFT JOIN geo_unidades g ON g.unidade = o.unidade
+GROUP BY o.programa_id;
 
 COPY (
     SELECT ano, prm_id, plm_id, ipl_id, opcao, crianca_id, programa_id,
@@ -121,7 +195,12 @@ def construir(ano: int | None = None, destino: Path = DIR_DADOS) -> dict:
             raise FileNotFoundError(f"base nao encontrada: {caminho}")
 
     destino.mkdir(parents=True, exist_ok=True)
-    executar_duckdb(montar_sql(ano, destino))
+    geo_parquet = preparar_geo_unidades(destino)
+    try:
+        executar_duckdb(montar_sql(ano, destino, geo_parquet))
+    finally:
+        if geo_parquet is not None:
+            geo_parquet.unlink(missing_ok=True)  # intermediario, nao faz parte do contrato
     return _resumir(destino)
 
 
@@ -131,7 +210,7 @@ def _resumir(destino: Path) -> dict:
         destino / "opcoes.parquet",
         ["ano", "prm_id", "plm_id", "ipl_id", "crianca_id", "score"],
     )
-    programas = _ler_parquet(destino / "programas.parquet", ["vagas"])
+    programas = _ler_parquet(destino / "programas.parquet", ["vagas", "lat", "lon"])
 
     inscricoes = (
         opcoes[["crianca_id", "ano", "prm_id", "plm_id", "ipl_id"]]
@@ -150,6 +229,8 @@ def _resumir(destino: Path) -> dict:
         "score_zero": int((opcoes["score"] == 0).sum()),
         # sinal de alerta: crianca com mais de uma inscricao no mesmo ano
         "criancas_multi_inscricao": int((inscricoes > 1).sum()),
+        "programas_com_geo": int(programas["lat"].notna().sum()),
+        "programas_sem_geo": int(programas["lat"].isna().sum()),
     }
 
 
