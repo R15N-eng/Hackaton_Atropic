@@ -112,7 +112,8 @@ App.initInscricao = async function () {
   function optionsHtml(list, valueKey, labelKey) {
     return list.map((item) => {
       const value = valueKey ? item[valueKey] : item;
-      const label = labelKey ? item[labelKey] : item;
+      let label = labelKey ? item[labelKey] : item;
+      if (valueKey && item.capacidade) label += ` (${item.capacidade} vagas)`;
       return `<option value="${value}">${label}</option>`;
     }).join("");
   }
@@ -445,6 +446,9 @@ App.initClassificacao = function () {
   let dadosAtuais = null;   // { classificacoes, sugestoes }
   let modoTroca = false;
   let ordemEmEdicao = [];
+  let unidadesCatalogo = null;
+  let novaSelecao = { unidade: "", grupamento: "", turno: "" };
+  let previewResultado = null;
 
   function badgeStatus(status) {
     return `<span class="badge badge-${status}">${STATUS_LABEL[status] || status}</span>`;
@@ -453,20 +457,29 @@ App.initClassificacao = function () {
   function cardClassificacao(item, idx) {
     const dias = App.diasRestantes(item.pode_trocar_ate);
     const podeTrocar = dias > 0;
+    const vagas = item.capacidade != null ? item.capacidade : item.total_fila;
     return `
       <div class="card">
         <p class="small-caps">${item.programa.nome_unidade} · ${item.programa.grupamento} · ${item.programa.turno}</p>
         <div class="position-hero">
           <div class="num">${App.ordinal(item.posicao)}</div>
-          <p class="of">posição de ${item.total_fila} na fila</p>
+          <p class="of">Você está no lugar ${item.posicao} de ${vagas}</p>
         </div>
-        <div style="display:flex;justify-content:center;margin-bottom:14px;">${badgeStatus(item.status)}</div>
+        ${item.total_fila != null ? `<p class="section-sub" style="text-align:center;margin-top:-6px;">${item.total_fila} famílias concorrendo a ${vagas} vagas</p>` : ""}
+        <div style="display:flex;justify-content:center;margin:10px 0 14px;">${badgeStatus(item.status)}</div>
         <div style="text-align:center;">
           ${podeTrocar
             ? `<span class="countdown">⏳ Você pode trocar sua escolha por mais ${dias} dia${dias === 1 ? "" : "s"}</span>`
             : `<span class="countdown expired">Prazo para troca encerrado em ${App.formatDatePt(item.pode_trocar_ate)}</span>`}
         </div>
       </div>
+    `;
+  }
+
+  function previewHtml(resultado) {
+    return `
+      ${App.bannerHtml("info", `Nessa unidade, hoje você entraria na posição <b>${resultado.posicao}</b> de <b>${resultado.capacidade}</b> vagas.`)}
+      <button type="button" class="btn btn-primary btn-sm btn-block" style="margin-top:8px;" data-acao="adicionar-lista">Adicionar essa unidade à lista</button>
     `;
   }
 
@@ -497,7 +510,7 @@ App.initClassificacao = function () {
         </div>
 
         <div style="margin-top:16px;">
-          <button type="button" id="btn-trocar" class="btn btn-secondary btn-block">Trocar minha escolha</button>
+          <button type="button" id="btn-trocar" class="btn btn-secondary btn-block">Gerenciar minhas opções</button>
         </div>
 
         <div id="area-troca" style="margin-top:12px;"></div>
@@ -524,19 +537,35 @@ App.initClassificacao = function () {
     }
   }
 
-  function abrirModoTroca(classificacoes) {
+  async function abrirModoTroca(classificacoes) {
     modoTroca = true;
     ordemEmEdicao = classificacoes.map((c) => ({ ...c.programa }));
+    novaSelecao = { unidade: "", grupamento: "", turno: "" };
+    previewResultado = null;
+
+    const area = App.qs("#area-troca");
+    if (area) area.innerHTML = App.loadingHtml("Carregando lista de unidades...");
+    try {
+      if (!unidadesCatalogo) unidadesCatalogo = await Api.listarUnidades();
+    } catch (_) {
+      unidadesCatalogo = [];
+    }
     renderModoTroca();
   }
 
   function renderModoTroca() {
     const area = App.qs("#area-troca");
     if (!area) return;
+
+    const disponiveis = (unidadesCatalogo || []).filter(
+      (u) => !ordemEmEdicao.some((p) => String(p.unidade) === String(u.unidade))
+    );
+    const podeAdicionarMais = ordemEmEdicao.length < 5;
+
     area.innerHTML = `
       <div class="card">
-        <p class="section-title">Reordenar suas opções</p>
-        <p class="section-sub">Use as setas para mudar a ordem. A 1ª opção é a que a família mais quer.</p>
+        <p class="section-title">Reordenar ou remover suas opções</p>
+        <p class="section-sub">Use as setas para mudar a ordem, ou remova uma opção. A 1ª opção é a que a família mais quer.</p>
         <div class="stack-tight" id="lista-reordenar">
           ${ordemEmEdicao.map((p, i) => `
             <div class="pref-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;" data-i="${i}">
@@ -544,28 +573,126 @@ App.initClassificacao = function () {
               <span class="reorder-btns">
                 <button type="button" data-mover="cima" ${i === 0 ? "disabled" : ""} aria-label="Mover para cima">↑</button>
                 <button type="button" data-mover="baixo" ${i === ordemEmEdicao.length - 1 ? "disabled" : ""} aria-label="Mover para baixo">↓</button>
+                ${ordemEmEdicao.length > 1 ? `<button type="button" data-remover="${i}" aria-label="Remover opção">✕</button>` : ""}
               </span>
             </div>
           `).join("")}
         </div>
+
+        <hr class="divider">
+        <p class="section-title">Adicionar uma nova unidade</p>
+        ${!podeAdicionarMais
+          ? `<p class="section-sub">Você já tem 5 opções na lista (o máximo permitido). Remova uma para adicionar outra.</p>`
+          : disponiveis.length === 0
+          ? `<p class="section-sub">Não há mais unidades disponíveis para adicionar.</p>`
+          : `
+          <div class="pref-grid">
+            <div class="field full" style="margin-bottom:0;">
+              <label>Unidade / creche</label>
+              <select class="input" id="nova-unidade">
+                <option value="" disabled ${!novaSelecao.unidade ? "selected" : ""}>Escolha a unidade</option>
+                ${disponiveis.map((u) => `<option value="${u.unidade}" ${String(u.unidade) === String(novaSelecao.unidade) ? "selected" : ""}>${u.nome_unidade}${u.capacidade ? ` (${u.capacidade} vagas)` : ""}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label>Turma</label>
+              <select class="input" id="nova-grupamento">
+                <option value="" disabled ${!novaSelecao.grupamento ? "selected" : ""}>Turma</option>
+                ${GRUPAMENTOS.map((g) => `<option value="${g}" ${g === novaSelecao.grupamento ? "selected" : ""}>${g}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label>Turno</label>
+              <select class="input" id="nova-turno">
+                <option value="" disabled ${!novaSelecao.turno ? "selected" : ""}>Turno</option>
+                ${TURNOS.map((t) => `<option value="${t}" ${t === novaSelecao.turno ? "selected" : ""}>${t}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:10px;">
+            <button type="button" id="btn-ver-vaga" class="btn btn-secondary btn-sm btn-block">Ver em qual vaga eu ficaria</button>
+          </div>
+          <div id="preview-resultado" style="margin-top:10px;">${previewResultado ? previewHtml(previewResultado) : ""}</div>
+          `
+        }
+
         <div id="troca-banner" style="margin-top:12px;"></div>
         <div style="display:flex;gap:10px;margin-top:14px;">
           <button type="button" id="btn-cancelar-troca" class="btn btn-ghost" style="flex:1;">Cancelar</button>
-          <button type="button" id="btn-confirmar-troca" class="btn btn-primary" style="flex:1;">Confirmar nova ordem</button>
+          <button type="button" id="btn-confirmar-troca" class="btn btn-primary" style="flex:1;">Confirmar alterações</button>
         </div>
       </div>
     `;
 
     App.qs("#lista-reordenar").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-mover]");
-      if (!btn) return;
-      const row = btn.closest("[data-i]");
-      const i = Number(row.dataset.i);
-      const alvo = btn.dataset.mover === "cima" ? i - 1 : i + 1;
-      if (alvo < 0 || alvo >= ordemEmEdicao.length) return;
-      [ordemEmEdicao[i], ordemEmEdicao[alvo]] = [ordemEmEdicao[alvo], ordemEmEdicao[i]];
-      renderModoTroca();
+      const moverBtn = e.target.closest("[data-mover]");
+      if (moverBtn) {
+        const row = moverBtn.closest("[data-i]");
+        const i = Number(row.dataset.i);
+        const alvo = moverBtn.dataset.mover === "cima" ? i - 1 : i + 1;
+        if (alvo < 0 || alvo >= ordemEmEdicao.length) return;
+        [ordemEmEdicao[i], ordemEmEdicao[alvo]] = [ordemEmEdicao[alvo], ordemEmEdicao[i]];
+        renderModoTroca();
+        return;
+      }
+      const removerBtn = e.target.closest("[data-remover]");
+      if (removerBtn) {
+        ordemEmEdicao.splice(Number(removerBtn.dataset.remover), 1);
+        renderModoTroca();
+      }
     });
+
+    const selUnidade = App.qs("#nova-unidade");
+    if (selUnidade) {
+      const selGrupamento = App.qs("#nova-grupamento");
+      const selTurno = App.qs("#nova-turno");
+      const sincronizarSelecao = () => {
+        novaSelecao = { unidade: selUnidade.value, grupamento: selGrupamento.value, turno: selTurno.value };
+        previewResultado = null;
+        App.qs("#preview-resultado").innerHTML = "";
+      };
+      selUnidade.addEventListener("change", sincronizarSelecao);
+      selGrupamento.addEventListener("change", sincronizarSelecao);
+      selTurno.addEventListener("change", sincronizarSelecao);
+    }
+
+    const btnVerVaga = App.qs("#btn-ver-vaga");
+    if (btnVerVaga) {
+      btnVerVaga.addEventListener("click", async () => {
+        if (!novaSelecao.unidade || !novaSelecao.grupamento || !novaSelecao.turno) {
+          App.qs("#preview-resultado").innerHTML = App.bannerHtml("error", "Escolha a unidade, a turma e o turno antes de ver a vaga.");
+          return;
+        }
+        btnVerVaga.disabled = true;
+        btnVerVaga.textContent = "Calculando...";
+        try {
+          previewResultado = await Api.preverPosicao(criancaId, novaSelecao.unidade, novaSelecao.grupamento, novaSelecao.turno);
+          App.qs("#preview-resultado").innerHTML = previewHtml(previewResultado);
+        } catch (err) {
+          App.qs("#preview-resultado").innerHTML = App.bannerHtml("error", App.mensagemErroAmigavel(err));
+        } finally {
+          btnVerVaga.disabled = false;
+          btnVerVaga.textContent = "Ver em qual vaga eu ficaria";
+        }
+      });
+    }
+
+    const containerPreview = App.qs("#preview-resultado");
+    if (containerPreview) {
+      containerPreview.addEventListener("click", (e) => {
+        if (!e.target.closest('[data-acao="adicionar-lista"]')) return;
+        const infoUnidade = (unidadesCatalogo || []).find((u) => String(u.unidade) === String(novaSelecao.unidade));
+        ordemEmEdicao.push({
+          unidade: novaSelecao.unidade,
+          nome_unidade: infoUnidade ? infoUnidade.nome_unidade : novaSelecao.unidade,
+          grupamento: novaSelecao.grupamento,
+          turno: novaSelecao.turno,
+        });
+        novaSelecao = { unidade: "", grupamento: "", turno: "" };
+        previewResultado = null;
+        renderModoTroca();
+      });
+    }
 
     App.qs("#btn-cancelar-troca").addEventListener("click", () => {
       modoTroca = false;
@@ -582,13 +709,21 @@ App.initClassificacao = function () {
         const dadosAtualizados = { classificacoes: resposta.classificacoes, sugestoes: dadosAtuais.sugestoes };
         const agora = App.formatDateHoraPt(new Date().toISOString());
         localStorage.setItem(cacheKey, JSON.stringify({ dados: dadosAtualizados, quando: agora }));
+
+        // mantém o cache local de preferências em sincronia (usado para
+        // mostrar turma/turno corretos após reordenar/adicionar/remover)
+        const inscricaoCacheKey = "creche_inscricao_" + criancaId;
+        const inscricaoCache = JSON.parse(localStorage.getItem(inscricaoCacheKey) || "null") || {};
+        inscricaoCache.preferencias = ordemEmEdicao;
+        localStorage.setItem(inscricaoCacheKey, JSON.stringify(inscricaoCache));
+
         modoTroca = false;
         renderNormal(dadosAtualizados, agora, false);
-        root.insertAdjacentHTML("afterbegin", App.bannerHtml("success", "Sua nova ordem de preferência foi salva."));
+        root.insertAdjacentHTML("afterbegin", App.bannerHtml("success", "Suas opções foram atualizadas."));
       } catch (err) {
         App.qs("#troca-banner").innerHTML = App.bannerHtml("error", App.mensagemErroAmigavel(err));
         btn.disabled = false;
-        btn.textContent = "Confirmar nova ordem";
+        btn.textContent = "Confirmar alterações";
       }
     });
   }

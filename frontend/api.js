@@ -221,6 +221,16 @@ const PROGRAMAS_REAIS_2025 = {
   "0734603|Maternal II|Integral": { capacidade: 13, demanda: 22, nota_corte_atual: 0 },
 };
 
+// Soma a capacidade (vagas totais) de todas as turmas/turnos reais de uma
+// unidade — usada para mostrar "quantas vagas no total" tem cada creche.
+function capacidadeTotalUnidade(codigoUnidade) {
+  let total = 0;
+  for (const [chave, dados] of Object.entries(PROGRAMAS_REAIS_2025)) {
+    if (chave.startsWith(codigoUnidade + "|")) total += dados.capacidade;
+  }
+  return total || seededInt(codigoUnidade + "|capacidade", 12, 40);
+}
+
 // Calcula a posição dentro de um programa. Quando existe nota de corte real
 // e ela é > 0, a posição é ancorada nela (determinística: acima do corte
 // sempre cai dentro da capacidade, abaixo sempre cai fora) — nada de sorteio
@@ -270,10 +280,10 @@ function gerarClassificacaoMock(criancaId, registro) {
       programa,
       posicao: posicaoFinal,
       total_fila: totalFila,
+      capacidade,
+      nota_corte_atual: notaCorte,
       status,
       pode_trocar_ate: addDays(criado_em, 7),
-      _capacidade: capacidade,
-      _nota_corte: notaCorte,
     };
   });
 
@@ -391,6 +401,35 @@ const MockApi = {
     return { ok: true };
   },
 
+  // pré-visualiza a posição numa unidade ANTES de ela ser adicionada à lista
+  // de preferências (botão "ver minha vaga" na tela de classificação).
+  async preverPosicao(criancaId, unidade, grupamento, turno) {
+    await delay(300);
+    const registro = MockStore.load(criancaId);
+    if (!registro) {
+      const err = new Error("Inscrição não encontrada.");
+      err.status = 404;
+      throw err;
+    }
+    const info = MOCK_UNIDADES.find((u) => u.unidade === unidade) || MOCK_UNIDADES[0];
+    const chaveProg = `${info.unidade}|${grupamento}|${turno}`;
+    const real = PROGRAMAS_REAIS_2025[chaveProg];
+    const capacidade = real ? real.capacidade : seededInt(chaveProg, 12, 40);
+    const totalFila = real ? real.demanda : capacidade + seededInt(chaveProg + "|fila", 15, 140);
+    const notaCorte = real ? real.nota_corte_atual : seededInt(chaveProg + "|corte", 10, SCORE_MAXIMO_2025);
+    const posicao = calcularPosicao(
+      { capacidade, totalFila, notaCorte, comCorteReal: !!real },
+      registro.score,
+      criancaId + "|" + chaveProg + "|preview"
+    );
+    return {
+      programa: { unidade: info.unidade, nome_unidade: info.nome_unidade, grupamento, turno },
+      posicao: Math.min(Math.max(1, posicao), totalFila + 1),
+      total_fila: totalFila,
+      capacidade,
+    };
+  },
+
   async trocar(criancaId, novaOrdemPreferencias) {
     await delay(450);
     const registro = MockStore.load(criancaId);
@@ -468,7 +507,7 @@ let _unidadesCache = null;
 async function _carregarUnidades() {
   if (_unidadesCache) return _unidadesCache;
   const lista = await httpJson("/programas");
-  _unidadesCache = lista.map((p) => ({ unidade: p.id, nome_unidade: p.nome, bairro: p.bairro }));
+  _unidadesCache = lista.map((p) => ({ unidade: p.id, nome_unidade: p.nome, bairro: p.bairro, capacidade: p.capacidade }));
   return _unidadesCache;
 }
 
@@ -533,58 +572,102 @@ const RealApi = {
   async classificacao(criancaId) {
     const info = await httpJson(`/classificacao/${encodeURIComponent(criancaId)}`);
 
-    const classificacoes = [];
+    // O back modela "1 unidade ativa + as demais preferências como sugestões
+    // com posição própria" (ver backend/app/main.py:classificacao). O front
+    // trata todas as preferências da família como uma lista única editável
+    // (adicionar/remover/reordenar) — aqui juntamos os dois num só array.
+    const itens = [];
     if (info.programa_escolhido_id != null) {
-      const prog = await httpJson(`/programa/${info.programa_escolhido_id}`);
-      const pref = _achaPrefLocal(criancaId, info.programa_escolhido_id);
+      itens.push({
+        programa_id: info.programa_escolhido_id,
+        programa_nome: info.programa_escolhido_nome,
+        posicao_na_fila: info.posicao_na_fila,
+        total_na_fila: info.total_na_fila,
+      });
+    }
+    for (const s of info.sugestoes || []) {
+      itens.push({
+        programa_id: s.programa_id,
+        programa_nome: s.programa_nome,
+        posicao_na_fila: s.posicao_na_fila,
+        total_na_fila: null,
+      });
+    }
+
+    const classificacoes = [];
+    for (const item of itens) {
+      const prog = await httpJson(`/programa/${item.programa_id}`);
+      const pref = _achaPrefLocal(criancaId, item.programa_id);
       const capacidade = prog.capacidade || 1;
       let status = "espera";
-      if (info.posicao_na_fila != null) {
-        if (info.posicao_na_fila <= capacidade) status = "dentro";
-        else if (info.posicao_na_fila <= Math.round(capacidade * 1.7)) status = "espera";
+      if (item.posicao_na_fila != null) {
+        if (item.posicao_na_fila <= capacidade) status = "dentro";
+        else if (item.posicao_na_fila <= Math.round(capacidade * 1.7)) status = "espera";
         else status = "fora";
       }
       classificacoes.push({
         programa: {
-          unidade: info.programa_escolhido_id,
-          nome_unidade: info.programa_escolhido_nome,
+          unidade: item.programa_id,
+          nome_unidade: item.programa_nome,
           grupamento: pref.grupamento || "",
           turno: pref.turno || "",
         },
-        posicao: info.posicao_na_fila,
-        total_fila: info.total_na_fila,
+        posicao: item.posicao_na_fila,
+        total_fila: item.total_na_fila != null ? item.total_na_fila : prog.inscritos,
+        capacidade,
         status,
         pode_trocar_ate: info.pode_alterar_ate,
       });
     }
 
-    const registro = JSON.parse(localStorage.getItem("creche_inscricao_" + criancaId) || "null");
-    const score = registro ? registro.score : null;
-    const sugestoes = (info.sugestoes || []).map((s) => {
-      const pref = _achaPrefLocal(criancaId, s.programa_id);
-      let chance = "media";
-      if (s.nota_corte_atual != null && score != null) {
-        if (score >= s.nota_corte_atual) chance = "alta";
-        else if (score >= s.nota_corte_atual - 15) chance = "media";
-        else chance = "baixa";
-      }
-      return {
-        unidade: s.programa_id,
-        nome_unidade: s.programa_nome,
-        grupamento: pref.grupamento || "",
-        turno: pref.turno || "",
-        chance,
-      };
-    });
+    return { classificacoes, sugestoes: [] };
+  },
 
-    return { classificacoes, sugestoes };
+  // pré-visualiza a posição numa unidade ANTES de ela ser adicionada à lista
+  // de preferências (botão "ver minha vaga" na tela de classificação).
+  async preverPosicao(criancaId, unidade) {
+    const info = await httpJson(`/classificacao/${encodeURIComponent(criancaId)}/pre-visualizar/${Number(unidade)}`);
+    return {
+      programa: { unidade: info.programa_id, nome_unidade: info.programa_nome, grupamento: "", turno: "" },
+      posicao: info.posicao_hipotetica,
+      total_fila: info.total_na_fila_hipotetico,
+      capacidade: info.capacidade,
+    };
   },
 
   async trocar(criancaId, novaOrdemPreferencias) {
+    const infoAtual = await httpJson(`/classificacao/${encodeURIComponent(criancaId)}`);
+    const atuais = new Set();
+    if (infoAtual.programa_escolhido_id != null) atuais.add(String(infoAtual.programa_escolhido_id));
+    for (const s of infoAtual.sugestoes || []) atuais.add(String(s.programa_id));
+
+    const novosIds = new Set(novaOrdemPreferencias.map((p) => String(p.unidade)));
+
+    // adiciona primeiro os novos, para nunca ficar sem nenhuma preferência
+    for (const pref of novaOrdemPreferencias) {
+      if (!atuais.has(String(pref.unidade))) {
+        await httpJson(`/preferencias/${encodeURIComponent(criancaId)}/adicionar`, {
+          method: "POST",
+          body: JSON.stringify({
+            programa_id: Number(pref.unidade),
+            faixa_etaria: pref.grupamento || "",
+            turno: pref.turno || "",
+          }),
+        });
+      }
+    }
+    // remove as que saíram da lista
+    for (const idAntigo of atuais) {
+      if (!novosIds.has(idAntigo)) {
+        await httpJson(`/preferencias/${encodeURIComponent(criancaId)}/${idAntigo}`, { method: "DELETE" });
+      }
+    }
+    // a 1ª opção da nova ordem passa a ser a unidade ativa
     const primeira = novaOrdemPreferencias[0];
     await httpJson(`/escolher_unidade?crianca_id=${encodeURIComponent(criancaId)}&programa_id=${Number(primeira.unidade)}`, {
       method: "POST",
     });
+
     const dados = await RealApi.classificacao(criancaId);
     return { ok: true, classificacoes: dados.classificacoes };
   },
@@ -599,10 +682,21 @@ const RealApi = {
    assinatura, só o valor de USE_MOCK muda qual lado é usado.
    ------------------------------------------------------------ */
 
+// unidades decoradas com capacidade (vagas totais) — mesmo no modo mock, para
+// a lista de unidades mostrar "quantas vagas no total" tem cada creche.
+let _unidadesMockCache = null;
+function _unidadesMockComCapacidade() {
+  if (!_unidadesMockCache) {
+    _unidadesMockCache = MOCK_UNIDADES.map((u) => ({ ...u, capacidade: capacidadeTotalUnidade(u.unidade) }));
+  }
+  return _unidadesMockCache;
+}
+
 const Api = {
-  listarUnidades: () => (USE_MOCK ? Promise.resolve(MOCK_UNIDADES) : _carregarUnidades()),
+  listarUnidades: () => (USE_MOCK ? Promise.resolve(_unidadesMockComCapacidade()) : _carregarUnidades()),
   enviarInscricao: (payload) => (USE_MOCK ? MockApi.inscricao(payload) : RealApi.inscricao(payload)),
   confirmarUnidade: (criancaId, unidade) => (USE_MOCK ? MockApi.confirmarUnidade(criancaId, unidade) : RealApi.confirmarUnidade(criancaId, unidade)),
+  preverPosicao: (criancaId, unidade, grupamento, turno) => (USE_MOCK ? MockApi.preverPosicao(criancaId, unidade, grupamento, turno) : RealApi.preverPosicao(criancaId, unidade, grupamento, turno)),
   buscarClassificacao: (criancaId) => (USE_MOCK ? MockApi.classificacao(criancaId) : RealApi.classificacao(criancaId)),
   trocarPreferencias: (criancaId, novaOrdem) => (USE_MOCK ? MockApi.trocar(criancaId, novaOrdem) : RealApi.trocar(criancaId, novaOrdem)),
   buscarStatusMatricula: (criancaId) => (USE_MOCK ? MockApi.statusMatricula(criancaId) : RealApi.statusMatricula(criancaId)),
