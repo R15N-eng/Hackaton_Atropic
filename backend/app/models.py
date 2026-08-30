@@ -120,7 +120,7 @@ class Notificacao(Base):
     corpo: Mapped[str] = mapped_column(String, default="")
     status: Mapped[str] = mapped_column(String, default="enviado")  # enviado, falhou
     erro: Mapped[str | None] = mapped_column(String, nullable=True)
-    twilio_sid: Mapped[str | None] = mapped_column(String, nullable=True)
+    mensagem_id: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
 
 
@@ -134,3 +134,29 @@ class WhatsappSessao(Base):
     dados_parciais: Mapped[dict] = mapped_column(JSON, default=dict)
     crianca_id: Mapped[int | None] = mapped_column(ForeignKey("criancas.id"), nullable=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class CodigoLogin(Base):
+    """Codigo de 6 digitos enviado por WhatsApp para a familia entrar depois
+    (de outro aparelho, por exemplo) sem precisar de senha -- ver app/auth.py."""
+
+    __tablename__ = "codigos_login"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    telefone: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    codigo: Mapped[str] = mapped_column(String, nullable=False)
+    expira_em: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+    usado: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)
+
+
+class Sessao(Base):
+    """Sessao de login da familia (token opaco), criada apos verificar o
+    codigo recebido por WhatsApp -- ou automaticamente ao se inscrever."""
+
+    __tablename__ = "sessoes"
+
+    token: Mapped[str] = mapped_column(String, primary_key=True)
+    telefone: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    expira_em: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=_now)

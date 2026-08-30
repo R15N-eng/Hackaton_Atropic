@@ -1,37 +1,37 @@
-"""Integracao com Twilio WhatsApp Sandbox.
+"""Integracao com a WhatsApp Cloud API (Meta), oficial e com tier gratuito.
 
 Contem:
 - envio de mensagens (convocacao, confirmacao de inscricao, verificacao mensal
   de telefone) com tratamento de erro que NUNCA derruba a API;
 - a maquina de estados da inscricao 100% por WhatsApp (etapa 1 do processo);
 - o fluxo de resposta da verificacao mensal de numero de telefone.
+
+Setup (Meta for Developers -> app -> produto WhatsApp -> API Setup):
+    META_WHATSAPP_TOKEN     token de acesso (temporario ou de um System User)
+    META_PHONE_NUMBER_ID    id do numero de teste/remetente
+    META_VERIFY_TOKEN       string qualquer, definida por voce, usada so no
+                             handshake de verificacao do webhook (GET)
+No modo de teste, cada numero de destino precisa ser adicionado e verificado
+manualmente na pagina "API Setup" (limite de 5 numeros).
 """
 
 import datetime as dt
 import logging
 import re
 
+import httpx
 from sqlalchemy.orm import Session
-from twilio.base.exceptions import TwilioRestException
-from twilio.rest import Client
 
 from app import classification_engine, config, models
 
 logger = logging.getLogger("whatsapp")
 
-_client: Client | None = None
+GRAPH_API_VERSION = "v20.0"
 
 
-def get_client() -> Client:
-    global _client
-    if _client is None:
-        _client = Client(config.TWILIO_ACCOUNT_SID, config.TWILIO_AUTH_TOKEN)
-    return _client
-
-
-def _telefone_whatsapp(numero: str) -> str:
-    """Garante o prefixo 'whatsapp:' exigido pela API do Twilio."""
-    return numero if numero.startswith("whatsapp:") else f"whatsapp:{numero}"
+def _telefone_meta(numero: str) -> str:
+    """A Cloud API espera o numero so com digitos (com DDI), sem '+' nem espacos."""
+    return re.sub(r"\D", "", numero)
 
 
 def enviar_whatsapp(
@@ -43,23 +43,34 @@ def enviar_whatsapp(
 ) -> models.Notificacao:
     """Envia uma mensagem de WhatsApp e registra o resultado (sucesso ou falha).
 
-    Nunca levanta excecao: uma falha no Twilio (sandbox fora do ar, numero
-    invalido, credenciais erradas) fica registrada em Notificacao.status =
+    Nunca levanta excecao: uma falha na Cloud API (token expirado, numero nao
+    verificado no modo de teste, etc.) fica registrada em Notificacao.status =
     'falhou', mas nao interrompe o fluxo da API que chamou esta funcao.
     """
     notificacao = models.Notificacao(
         crianca_id=crianca_id, telefone=telefone, tipo=tipo, corpo=corpo, status="enviado"
     )
     try:
-        if not config.TWILIO_ACCOUNT_SID or not config.TWILIO_AUTH_TOKEN:
-            raise RuntimeError("Credenciais do Twilio nao configuradas (.env)")
-        mensagem = get_client().messages.create(
-            from_=_telefone_whatsapp(config.TWILIO_WHATSAPP_FROM),
-            to=_telefone_whatsapp(telefone),
-            body=corpo,
+        if not config.META_WHATSAPP_TOKEN or not config.META_PHONE_NUMBER_ID:
+            raise RuntimeError("Credenciais da Meta WhatsApp Cloud API nao configuradas (.env)")
+        url = f"https://graph.facebook.com/{GRAPH_API_VERSION}/{config.META_PHONE_NUMBER_ID}/messages"
+        resp = httpx.post(
+            url,
+            headers={"Authorization": f"Bearer {config.META_WHATSAPP_TOKEN}"},
+            json={
+                "messaging_product": "whatsapp",
+                "to": _telefone_meta(telefone),
+                "type": "text",
+                "text": {"body": corpo},
+            },
+            timeout=10.0,
         )
-        notificacao.twilio_sid = mensagem.sid
-    except (TwilioRestException, RuntimeError, Exception) as exc:  # noqa: BLE001
+        dados = resp.json()
+        if resp.status_code >= 400:
+            erro = dados.get("error", {})
+            raise RuntimeError(erro.get("message", f"HTTP {resp.status_code}"))
+        notificacao.mensagem_id = dados["messages"][0]["id"]
+    except Exception as exc:  # noqa: BLE001
         notificacao.status = "falhou"
         notificacao.erro = str(exc)
         logger.warning("Falha ao enviar WhatsApp para %s: %s", telefone, exc)

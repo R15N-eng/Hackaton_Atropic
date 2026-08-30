@@ -41,8 +41,23 @@ class InscricaoOut(BaseModel):
     canal_inscricao: str
     programa_escolhido_id: int | None
     preferencias: list[PreferenciaOut]
+    token: str | None = None  # so vem preenchido na resposta de POST /inscricao
 
     model_config = {"from_attributes": True}
+
+
+class SolicitarCodigoIn(BaseModel):
+    telefone: str
+
+
+class VerificarCodigoIn(BaseModel):
+    telefone: str
+    codigo: str
+
+
+class SessaoOut(BaseModel):
+    token: str
+    telefone: str
 
 
 class AvancarProcessoIn(BaseModel):

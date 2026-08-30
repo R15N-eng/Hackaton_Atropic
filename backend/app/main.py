@@ -1,15 +1,14 @@
 import datetime as dt
 import logging
 
-from fastapi import Depends, FastAPI, Form, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from twilio.twiml.messaging_response import MessagingResponse
 
 import seed_data  # script na raiz de backend/, nao faz parte do pacote app
 
-from app import classification_engine, config, crud, models, schemas, scheduler, whatsapp
+from app import auth, classification_engine, config, crud, models, schemas, scheduler, whatsapp
 from app.database import get_db, init_db
 
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +33,76 @@ def _startup() -> None:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+# --------------------------------------------------------------------------
+# Login da familia (telefone + codigo via WhatsApp) -- ver app/auth.py.
+# Sem senha: quem entra logo apos se inscrever ja recebe uma sessao junto da
+# resposta de POST /inscricao (ver token em InscricaoOut); este fluxo de
+# codigo e para voltar depois, de outro aparelho.
+# --------------------------------------------------------------------------
+
+@app.post("/auth/solicitar-codigo")
+def solicitar_codigo(dados: schemas.SolicitarCodigoIn, db: Session = Depends(get_db)):
+    tem_inscricao = (
+        db.query(models.Crianca)
+        .filter(models.Crianca.responsavel_telefone == dados.telefone)
+        .first()
+        is not None
+    )
+    if tem_inscricao:
+        codigo = auth.gerar_codigo()
+        db.add(
+            models.CodigoLogin(
+                telefone=dados.telefone,
+                codigo=codigo,
+                expira_em=dt.datetime.utcnow()
+                + dt.timedelta(minutes=config.CODIGO_LOGIN_VALIDADE_MINUTOS),
+            )
+        )
+        db.commit()
+        whatsapp.enviar_whatsapp(
+            db,
+            dados.telefone,
+            f"Seu codigo de acesso a fila de creches e {codigo}. "
+            f"Ele expira em {config.CODIGO_LOGIN_VALIDADE_MINUTOS} minutos.",
+            tipo="codigo_login",
+        )
+    # mesma resposta nos dois casos, para nao revelar se o numero tem inscricao
+    return {"mensagem": "Se esse numero tiver inscricoes, enviamos um codigo por WhatsApp."}
+
+
+@app.post("/auth/verificar-codigo", response_model=schemas.SessaoOut)
+def verificar_codigo(dados: schemas.VerificarCodigoIn, db: Session = Depends(get_db)):
+    registro = (
+        db.query(models.CodigoLogin)
+        .filter(
+            models.CodigoLogin.telefone == dados.telefone,
+            models.CodigoLogin.codigo == dados.codigo,
+            models.CodigoLogin.usado.is_(False),
+        )
+        .order_by(models.CodigoLogin.created_at.desc())
+        .first()
+    )
+    if registro is None or registro.expira_em < dt.datetime.utcnow():
+        raise HTTPException(400, "Codigo invalido ou expirado")
+    registro.usado = True
+    db.add(registro)
+    db.commit()
+    sessao = auth.criar_sessao(db, dados.telefone)
+    return schemas.SessaoOut(token=sessao.token, telefone=sessao.telefone)
+
+
+@app.get("/minhas-inscricoes", response_model=list[schemas.InscricaoOut])
+def minhas_inscricoes(
+    telefone: str = Depends(auth.obter_telefone_autenticado), db: Session = Depends(get_db)
+):
+    """Lista as inscricoes (pode ser mais de uma crianca) do numero logado --
+    usado para a familia escolher qual acompanhar apos entrar de outro aparelho."""
+    criancas = (
+        db.query(models.Crianca).filter(models.Crianca.responsavel_telefone == telefone).all()
+    )
+    return [_serializar_inscricao(c) for c in criancas]
 
 
 # ==========================================================================
@@ -168,7 +237,12 @@ def inscrever(dados: schemas.InscricaoIn, db: Session = Depends(get_db)):
         tipo="confirmacao_inscricao",
         crianca_id=crianca.id,
     )
-    return _serializar_inscricao(crianca)
+    # login automatico: quem acaba de se inscrever ja sai com uma sessao, sem
+    # precisar pedir codigo por WhatsApp na hora (isso e so pra voltar depois).
+    sessao = auth.criar_sessao(db, crianca.responsavel_telefone)
+    resposta = _serializar_inscricao(crianca)
+    resposta.token = sessao.token
+    return resposta
 
 
 def _serializar_inscricao(crianca: models.Crianca) -> schemas.InscricaoOut:
@@ -200,11 +274,15 @@ def _serializar_inscricao(crianca: models.Crianca) -> schemas.InscricaoOut:
 
 @app.post("/verificacao_documentos/{crianca_id}", response_model=schemas.InscricaoOut)
 def verificar_documentos(
-    crianca_id: int, programa_id: int | None = None, db: Session = Depends(get_db)
+    crianca_id: int,
+    programa_id: int | None = None,
+    telefone: str = Depends(auth.obter_telefone_autenticado),
+    db: Session = Depends(get_db),
 ):
     crianca = db.get(models.Crianca, crianca_id)
     if crianca is None:
         raise HTTPException(404, "Crianca nao encontrada")
+    auth.garantir_dono(crianca, telefone)
 
     ids_preferencias = [p.programa_id for p in crianca.preferencias]
     if programa_id is not None:
@@ -233,7 +311,22 @@ def verificar_documentos(
 # --------------------------------------------------------------------------
 
 @app.get("/classificacao/{crianca_id}", response_model=schemas.ClassificacaoOut)
-def classificacao(crianca_id: int, db: Session = Depends(get_db)):
+def classificacao(
+    crianca_id: int,
+    telefone: str = Depends(auth.obter_telefone_autenticado),
+    db: Session = Depends(get_db),
+):
+    crianca = db.get(models.Crianca, crianca_id)
+    if crianca is None:
+        raise HTTPException(404, "Crianca nao encontrada")
+    auth.garantir_dono(crianca, telefone)
+    return _calcular_classificacao(crianca_id, db)
+
+
+def _calcular_classificacao(crianca_id: int, db: Session) -> schemas.ClassificacaoOut:
+    """Corpo de fato do calculo, sem depender do pedido HTTP -- para poder ser
+    chamado direto por /escolher_unidade e pelo webhook do WhatsApp (comando
+    STATUS), que ja identificaram a crianca por outro caminho."""
     crianca = db.get(models.Crianca, crianca_id)
     if crianca is None:
         raise HTTPException(404, "Crianca nao encontrada")
@@ -283,13 +376,18 @@ def classificacao(crianca_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/status-matricula/{crianca_id}", response_model=schemas.StatusMatriculaOut)
-def status_matricula(crianca_id: int, db: Session = Depends(get_db)):
+def status_matricula(
+    crianca_id: int,
+    telefone: str = Depends(auth.obter_telefone_autenticado),
+    db: Session = Depends(get_db),
+):
     """Usado pela tela 4 do front (status.html): resultado final da inscricao,
     fora do contrato original da Pessoa 2 (adicionado para o front consumir a
     API real em vez do mock)."""
     crianca = db.get(models.Crianca, crianca_id)
     if crianca is None:
         raise HTTPException(404, "Crianca nao encontrada")
+    auth.garantir_dono(crianca, telefone)
 
     if crianca.status in (
         models.StatusInscricao.SELECIONADO.value,
@@ -319,13 +417,19 @@ def _garantir_dentro_da_janela(crianca: models.Crianca) -> None:
     "/classificacao/{crianca_id}/pre-visualizar/{programa_id}",
     response_model=schemas.PreVisualizacaoOut,
 )
-def pre_visualizar_posicao(crianca_id: int, programa_id: int, db: Session = Depends(get_db)):
+def pre_visualizar_posicao(
+    crianca_id: int,
+    programa_id: int,
+    telefone: str = Depends(auth.obter_telefone_autenticado),
+    db: Session = Depends(get_db),
+):
     """Mostra em que posicao a crianca ficaria numa unidade ANTES de ela ser
     adicionada as preferencias -- usado pela tela de classificacao para a
     familia decidir se vale a pena adicionar essa opcao a lista."""
     crianca = db.get(models.Crianca, crianca_id)
     if crianca is None:
         raise HTTPException(404, "Crianca nao encontrada")
+    auth.garantir_dono(crianca, telefone)
     programa = db.get(models.Programa, programa_id)
     if programa is None:
         raise HTTPException(404, "Programa nao encontrado")
@@ -342,7 +446,10 @@ def pre_visualizar_posicao(crianca_id: int, programa_id: int, db: Session = Depe
 
 @app.post("/preferencias/{crianca_id}/adicionar", response_model=schemas.InscricaoOut)
 def adicionar_preferencia(
-    crianca_id: int, dados: schemas.PreferenciaAdicionarIn, db: Session = Depends(get_db)
+    crianca_id: int,
+    dados: schemas.PreferenciaAdicionarIn,
+    telefone: str = Depends(auth.obter_telefone_autenticado),
+    db: Session = Depends(get_db),
 ):
     """Adiciona uma nova unidade a lista de preferencias (max 5) -- diferente
     de /escolher_unidade, que so troca qual das preferencias JA existentes
@@ -350,6 +457,7 @@ def adicionar_preferencia(
     crianca = db.get(models.Crianca, crianca_id)
     if crianca is None:
         raise HTTPException(404, "Crianca nao encontrada")
+    auth.garantir_dono(crianca, telefone)
     _garantir_dentro_da_janela(crianca)
 
     if len(crianca.preferencias) >= 5:
@@ -374,12 +482,18 @@ def adicionar_preferencia(
 
 
 @app.delete("/preferencias/{crianca_id}/{programa_id}", response_model=schemas.InscricaoOut)
-def remover_preferencia(crianca_id: int, programa_id: int, db: Session = Depends(get_db)):
+def remover_preferencia(
+    crianca_id: int,
+    programa_id: int,
+    telefone: str = Depends(auth.obter_telefone_autenticado),
+    db: Session = Depends(get_db),
+):
     """Remove uma unidade da lista de preferencias. Se ela era a unidade
     ativa (programa_escolhido_id), a 1a preferencia restante assume o lugar."""
     crianca = db.get(models.Crianca, crianca_id)
     if crianca is None:
         raise HTTPException(404, "Crianca nao encontrada")
+    auth.garantir_dono(crianca, telefone)
     _garantir_dentro_da_janela(crianca)
 
     if len(crianca.preferencias) <= 1:
@@ -402,19 +516,25 @@ def remover_preferencia(crianca_id: int, programa_id: int, db: Session = Depends
 
 
 @app.post("/escolher_unidade", response_model=schemas.ClassificacaoOut)
-def escolher_unidade(crianca_id: int, programa_id: int, db: Session = Depends(get_db)):
+def escolher_unidade(
+    crianca_id: int,
+    programa_id: int,
+    telefone: str = Depends(auth.obter_telefone_autenticado),
+    db: Session = Depends(get_db),
+):
     """Troca a unidade escolhida, respeitando a janela de N dias definida em
     config.JANELA_TROCA_DIAS a partir da 1a escolha (verificacao de documentos)."""
     crianca = db.get(models.Crianca, crianca_id)
     if crianca is None:
         raise HTTPException(404, "Crianca nao encontrada")
+    auth.garantir_dono(crianca, telefone)
     if programa_id not in [p.programa_id for p in crianca.preferencias]:
         raise HTTPException(400, "programa_id nao esta entre as preferencias da crianca")
     _garantir_dentro_da_janela(crianca)
     crianca.programa_escolhido_id = programa_id
     db.add(crianca)
     db.commit()
-    return classificacao(crianca_id, db)
+    return _calcular_classificacao(crianca_id, db)
 
 
 # --------------------------------------------------------------------------
@@ -475,18 +595,40 @@ def avancar_processo(dados: schemas.AvancarProcessoIn, db: Session = Depends(get
 
 
 # --------------------------------------------------------------------------
-# WhatsApp: webhook do Twilio (inscricao por WhatsApp + verificacao mensal)
+# WhatsApp: webhook da Meta Cloud API (inscricao por WhatsApp + verificacao
+# mensal). Dois metodos: GET faz o handshake de verificacao que a Meta exige
+# ao cadastrar a URL do webhook; POST recebe as mensagens de fato.
 # --------------------------------------------------------------------------
 
-@app.post("/whatsapp/webhook")
-def whatsapp_webhook(
-    From: str = Form(...),
-    Body: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    telefone = From.replace("whatsapp:", "")
-    texto = Body.strip()
+@app.get("/whatsapp/webhook")
+def verificar_webhook_whatsapp(request: Request):
+    params = request.query_params
+    if (
+        params.get("hub.mode") == "subscribe"
+        and params.get("hub.verify_token") == config.META_VERIFY_TOKEN
+    ):
+        return Response(content=params.get("hub.challenge", ""), media_type="text/plain")
+    raise HTTPException(403, "Token de verificacao invalido")
 
+
+def _extrair_mensagens_meta(payload: dict) -> list[tuple[str, str]]:
+    """Extrai (telefone, texto) de cada mensagem de texto recebida no payload
+    do webhook. Ignora callbacks de status (entregue/lido), que vem no mesmo
+    formato de webhook mas sem a chave 'messages'."""
+    mensagens = []
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            for msg in change.get("value", {}).get("messages", []):
+                telefone = msg.get("from")
+                texto = msg.get("text", {}).get("body")
+                if telefone and texto is not None:
+                    mensagens.append((telefone, texto))
+    return mensagens
+
+
+def _processar_mensagem_whatsapp(db: Session, telefone: str, texto: str) -> str:
+    """Decide a resposta a uma mensagem recebida, sem enviar nada -- quem
+    chama e responsavel por despachar o texto via whatsapp.enviar_whatsapp."""
     crianca_pendente = (
         db.query(models.Crianca)
         .filter(
@@ -498,14 +640,12 @@ def whatsapp_webhook(
     sessao_ativa = db.get(models.WhatsappSessao, telefone)
 
     if sessao_ativa is not None and sessao_ativa.estado != "finalizado":
-        texto_resposta = whatsapp.iniciar_ou_continuar_inscricao(db, telefone, texto)
-    elif crianca_pendente is not None:
-        texto_resposta = whatsapp.processar_resposta_verificacao_telefone(
-            db, crianca_pendente, texto
-        )
-    elif texto.lower() in {"inscricao", "inscrição", "matricula", "matrícula"}:
-        texto_resposta = whatsapp.iniciar_ou_continuar_inscricao(db, telefone, texto)
-    elif texto.lower() == "status":
+        return whatsapp.iniciar_ou_continuar_inscricao(db, telefone, texto)
+    if crianca_pendente is not None:
+        return whatsapp.processar_resposta_verificacao_telefone(db, crianca_pendente, texto)
+    if texto.lower() in {"inscricao", "inscrição", "matricula", "matrícula"}:
+        return whatsapp.iniciar_ou_continuar_inscricao(db, telefone, texto)
+    if texto.lower() == "status":
         crianca = (
             db.query(models.Crianca)
             .filter(models.Crianca.responsavel_telefone == telefone)
@@ -513,22 +653,28 @@ def whatsapp_webhook(
             .first()
         )
         if crianca is None:
-            texto_resposta = "Nao encontramos inscricao para este numero. Digite INSCRICAO para comecar."
-        else:
-            info = classificacao(crianca.id, db)
-            texto_resposta = (
-                f"Status de {crianca.nome}: {info.status}. "
-                f"Posicao na fila: {info.posicao_na_fila or '—'} de {info.total_na_fila or '—'}."
-            )
-    else:
-        texto_resposta = (
-            "Ola! Digite INSCRICAO para iniciar uma inscricao na fila de creches, "
-            "ou STATUS para ver a posicao de uma inscricao existente."
+            return "Nao encontramos inscricao para este numero. Digite INSCRICAO para comecar."
+        info = _calcular_classificacao(crianca.id, db)
+        return (
+            f"Status de {crianca.nome}: {info.status}. "
+            f"Posicao na fila: {info.posicao_na_fila or '—'} de {info.total_na_fila or '—'}."
         )
+    return (
+        "Ola! Digite INSCRICAO para iniciar uma inscricao na fila de creches, "
+        "ou STATUS para ver a posicao de uma inscricao existente."
+    )
 
-    twiml = MessagingResponse()
-    twiml.message(texto_resposta)
-    return Response(content=str(twiml), media_type="application/xml")
+
+@app.post("/whatsapp/webhook")
+async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    for telefone, texto in _extrair_mensagens_meta(payload):
+        telefone_e164 = telefone if telefone.startswith("+") else f"+{telefone}"
+        texto_resposta = _processar_mensagem_whatsapp(db, telefone_e164, texto.strip())
+        whatsapp.enviar_whatsapp(db, telefone_e164, texto_resposta, tipo="resposta_bot")
+    # a Meta so precisa de um 200 rapido confirmando o recebimento -- a
+    # resposta de verdade vai por fora, via enviar_whatsapp acima.
+    return {"status": "ok"}
 
 
 @app.post("/whatsapp/enviar_convocacao/{crianca_id}")

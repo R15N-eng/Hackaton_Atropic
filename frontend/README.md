@@ -36,7 +36,7 @@ mantido de propósito, não é código morto.
 
 `inscricao.html` → `verificacao.html` → `classificacao.html` → `status.html`
 
-O `crianca_id` retornado pela inscrição é salvo em `localStorage` e propagado na URL (`?crianca_id=...`) entre as telas — dá para recarregar ou compartilhar o link de qualquer tela sem perder o contexto.
+O `crianca_id` retornado pela inscrição é salvo só em `localStorage` deste aparelho — nunca aparece na URL, para não vazar em histórico do navegador, print de tela ou link compartilhado. Dá para recarregar qualquer tela sem perder o contexto; para acompanhar de outro aparelho, a família usa o login por telefone (`login.html`), que não depende do id.
 
 ## Arquivos
 

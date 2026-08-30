@@ -11,18 +11,16 @@ const App = {};
 App.qs = (sel, root) => (root || document).querySelector(sel);
 App.qsa = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
-App.getParam = (name) => new URLSearchParams(window.location.search).get(name);
-
-App.getCriancaId = () => App.getParam("crianca_id") || localStorage.getItem("creche_crianca_id") || null;
+// o id da criança nunca vai para a URL/link — fica só no localStorage deste
+// aparelho, para não vazar em histórico do navegador, print de tela ou link
+// compartilhado (ex: WhatsApp). Quem precisa acompanhar de outro aparelho usa
+// o login por telefone (App.initLogin), não um link com o id embutido.
+App.getCriancaId = () => localStorage.getItem("creche_crianca_id") || null;
 
 App.setCriancaId = (id) => localStorage.setItem("creche_crianca_id", id);
 
-App.goTo = (page, extraParams) => {
-  const params = new URLSearchParams(extraParams || {});
-  const id = App.getCriancaId();
-  if (id && !params.has("crianca_id")) params.set("crianca_id", id);
-  const qs = params.toString();
-  window.location.href = page + (qs ? "?" + qs : "");
+App.goTo = (page) => {
+  window.location.href = page;
 };
 
 App.formatDatePt = (iso) => {
@@ -271,7 +269,7 @@ App.initInscricao = async function () {
         score: resposta.score,
         unidade_comprovacao_sugerida: resposta.unidade_comprovacao_sugerida,
       }));
-      App.goTo("verificacao.html", { crianca_id: resposta.crianca_id });
+      App.goTo("verificacao.html");
     } catch (err) {
       bannerEl.innerHTML = App.bannerHtml("error", App.mensagemErroAmigavel(err), "Não foi possível enviar sua inscrição");
       btnEnviar.disabled = false;
@@ -342,14 +340,11 @@ App.initVerificacao = function () {
       ${criterios.length > 0 ? `
       <div class="card" style="margin-top:12px;">
         <p class="section-title">Critérios que você declarou</p>
-        <p class="section-sub">Leve os documentos que comprovem cada um. Sua pontuação atual (${dados.score} de ${SCORE_MAXIMO_2025} pontos) considera todos eles.</p>
+        <p class="section-sub">Leve os documentos que comprovem cada um — eles entram no cálculo da sua posição na fila.</p>
         <div class="stack-tight">
           ${criterios.map((c) => `
-            <div class="pref-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div class="pref-row" style="display:flex;align-items:center;gap:10px;">
               <span style="font-size:13.5px;">${c.texto}</span>
-              ${c.criterio
-                ? `<span class="badge badge-baixa" style="flex:none;">Critério de desempate</span>`
-                : `<span class="badge badge-media" style="flex:none;">+${c.pontos} pts</span>`}
             </div>
           `).join("")}
         </div>
@@ -413,7 +408,7 @@ App.initVerificacao = function () {
         unidade: escolhidaUnidade,
         nome_unidade: nomeDaUnidade(escolhidaUnidade),
       }));
-      App.goTo("classificacao.html", { crianca_id: criancaId });
+      App.goTo("classificacao.html");
     } catch (err) {
       root.insertAdjacentHTML("afterbegin", App.bannerHtml("error", App.mensagemErroAmigavel(err), "Não foi possível confirmar a unidade"));
       btn.disabled = false;
@@ -827,4 +822,121 @@ App.initStatus = function () {
   }
 
   carregar();
+};
+
+/* ============================================================
+   TELA — Entrar (login por telefone + código via WhatsApp)
+   Para a família voltar depois, de outro aparelho, sem depender do
+   crianca_id salvo no localStorage deste aparelho de quando fez a inscrição.
+   ============================================================ */
+
+App.initLogin = function () {
+  const root = App.qs("#conteudo-login");
+  let telefoneDigitado = "";
+
+  function renderPedirTelefone(mensagemErro) {
+    root.innerHTML = `
+      ${mensagemErro ? App.bannerHtml("error", mensagemErro) : ""}
+      <div class="card">
+        <div class="field" style="margin-bottom:0;">
+          <label for="login-telefone">Telefone (WhatsApp) cadastrado na inscrição</label>
+          <input class="input" id="login-telefone" type="tel" placeholder="+5521999999999" autocomplete="off" value="${telefoneDigitado}">
+        </div>
+      </div>
+      <div class="sticky-cta">
+        <button type="button" id="btn-enviar-codigo" class="btn btn-primary btn-block">Enviar código por WhatsApp</button>
+      </div>
+    `;
+    App.qs("#btn-enviar-codigo").addEventListener("click", async (e) => {
+      const btn = e.target;
+      const telefone = App.qs("#login-telefone").value.trim();
+      if (!telefone) {
+        renderPedirTelefone("Informe o telefone cadastrado na inscrição.");
+        return;
+      }
+      telefoneDigitado = telefone;
+      btn.disabled = true;
+      btn.textContent = "Enviando...";
+      try {
+        await Api.solicitarCodigo(telefone);
+        renderPedirCodigo(telefone);
+      } catch (err) {
+        renderPedirTelefone(App.mensagemErroAmigavel(err));
+      }
+    });
+  }
+
+  function renderPedirCodigo(telefone, mensagemErro) {
+    root.innerHTML = `
+      ${mensagemErro ? App.bannerHtml("error", mensagemErro) : App.bannerHtml("info", `Enviamos um código de 6 dígitos por WhatsApp para ${telefone}.`)}
+      <div class="card">
+        <div class="field" style="margin-bottom:0;">
+          <label for="login-codigo">Código recebido</label>
+          <input class="input" id="login-codigo" type="text" inputmode="numeric" placeholder="000000" maxlength="6" autocomplete="off">
+        </div>
+      </div>
+      <div style="margin-top:12px;text-align:center;">
+        <button type="button" id="btn-trocar-telefone" class="link-btn">Usar outro número</button>
+      </div>
+      <div class="sticky-cta">
+        <button type="button" id="btn-confirmar-codigo" class="btn btn-primary btn-block">Entrar</button>
+      </div>
+    `;
+    App.qs("#btn-trocar-telefone").addEventListener("click", () => renderPedirTelefone());
+    App.qs("#btn-confirmar-codigo").addEventListener("click", async (e) => {
+      const btn = e.target;
+      const codigo = App.qs("#login-codigo").value.trim();
+      if (!codigo) {
+        renderPedirCodigo(telefone, "Digite o código recebido.");
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "Entrando...";
+      try {
+        await Api.verificarCodigo(telefone, codigo);
+        await carregarInscricoes();
+      } catch (err) {
+        renderPedirCodigo(telefone, App.mensagemErroAmigavel(err));
+      }
+    });
+  }
+
+  async function carregarInscricoes() {
+    root.innerHTML = App.loadingHtml("Buscando suas inscrições...");
+    try {
+      const inscricoes = await Api.minhasInscricoes();
+      if (inscricoes.length === 0) {
+        root.innerHTML = App.emptyHtml("Não encontramos nenhuma inscrição para esse número.") +
+          `<div style="margin-top:16px;text-align:center;"><a class="link-btn" href="inscricao.html">Fazer uma nova inscrição →</a></div>`;
+        return;
+      }
+      if (inscricoes.length === 1) {
+        App.setCriancaId(inscricoes[0].id);
+        App.goTo("classificacao.html");
+        return;
+      }
+      root.innerHTML = `
+        <p class="section-title">Qual inscrição você quer acompanhar?</p>
+        <div class="stack-tight" id="lista-inscricoes">
+          ${inscricoes.map((i) => `
+            <button type="button" class="pref-row" style="width:100%;text-align:left;cursor:pointer;" data-id="${i.id}">
+              <b>${i.nome}</b><br>
+              <span class="section-sub" style="margin:2px 0 0;">Status: ${i.status}</span>
+            </button>
+          `).join("")}
+        </div>
+      `;
+      App.qs("#lista-inscricoes").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-id]");
+        if (!btn) return;
+        App.setCriancaId(btn.dataset.id);
+        App.goTo("classificacao.html");
+      });
+    } catch (err) {
+      root.innerHTML = App.erroHtml(App.mensagemErroAmigavel(err), true);
+      App.qs('[data-acao="retentar"]').addEventListener("click", carregarInscricoes);
+    }
+  }
+
+  renderPedirTelefone();
 };

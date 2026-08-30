@@ -2,7 +2,7 @@
 
 Implementação da **Pessoa 2** do time: uma API FastAPI com persistência em
 SQLite, que cobre as 4 etapas do processo (inscrição, verificação de
-documentos, classificação, matrícula) e integra o Twilio WhatsApp Sandbox
+documentos, classificação, matrícula) e integra a WhatsApp Cloud API (Meta)
 para: confirmação de inscrição, convocação quando a criança é selecionada,
 **inscrição feita 100% pelo WhatsApp** e **verificação mensal do número de
 telefone do responsável**.
@@ -18,12 +18,12 @@ backend/
     models.py                tabelas SQLite (SQLAlchemy)
     schemas.py                contrato de entrada/saída (Pydantic) da API
     crud.py                   criação de inscrição (usada pelo site e pelo WhatsApp)
-    whatsapp.py               cliente Twilio, templates de mensagem, maquina de
-                               estados da inscrição por WhatsApp, verificação mensal
+    whatsapp.py               cliente da WhatsApp Cloud API, templates de mensagem, maquina
+                               de estados da inscrição por WhatsApp, verificação mensal
     classification_engine.py  motor de pontuação/fila (stub — ver seção de integração)
     scheduler.py              job mensal automático (APScheduler)
     config.py / database.py   configuração e conexão com o banco
-  tests/                      pytest, com Twilio mockado (não faz chamada real)
+  tests/                      pytest, com a Cloud API mockada (não faz chamada real)
   seed_data.py                popula 3 creches de exemplo para testar manualmente
   requirements.txt
   .env.example
@@ -39,7 +39,7 @@ backend/
   unidade escolhida e data da escolha (para a janela de troca de 7 dias).
 - **Preferencia** — até 5 unidades de preferência por criança, em ordem.
 - **Notificacao** — log de toda mensagem de WhatsApp enviada (sucesso ou falha),
-  usado para auditoria e para nunca derrubar a API por causa do Twilio.
+  usado para auditoria e para nunca derrubar a API por causa da Cloud API.
 - **WhatsappSessao** — estado da conversa por número de telefone, usado pela
   inscrição feita via WhatsApp.
 
@@ -53,7 +53,7 @@ backend/
 | POST | `/escolher_unidade` | 3 | Troca a unidade escolhida entre as preferências, respeitando a janela de 7 dias. |
 | POST | `/avancar_processo` | 3/4 | Muda o status (`classificado`, `selecionado`, `matriculado`, `cancelado`). Ao virar `selecionado`, dispara a convocação por WhatsApp. Ao liberar uma vaga (`cancelado`/`matriculado`), roda a reclassificação e avisa quem subiu na fila. |
 | GET | `/programa/{id}`, `/programas` | — | Dados da unidade + nota de corte atual. |
-| POST | `/whatsapp/webhook` | 1 e extra | Webhook do Twilio: inscrição por WhatsApp, resposta a `STATUS`, resposta à verificação mensal de telefone. |
+| GET/POST | `/whatsapp/webhook` | 1 e extra | Webhook da Meta: GET faz a verificação de assinatura do webhook, POST recebe as mensagens (inscrição por WhatsApp, resposta a `STATUS`, resposta à verificação mensal de telefone). |
 | POST | `/jobs/verificar_telefones` | extra | Dispara manualmente a verificação mensal (útil para demo, sem esperar 30 dias). |
 | GET | `/health` | — | Healthcheck. |
 
@@ -79,11 +79,12 @@ automaticamente todo mês via APScheduler (`ENABLE_SCHEDULER=true` no `.env`),
 e também pode ser disparado a qualquer momento em `POST /jobs/verificar_telefones`
 (sem essa opção, testar a automação real levaria um mês).
 
-### Integração com o Twilio
+### Integração com a WhatsApp Cloud API (Meta)
 
-`app/whatsapp.py:enviar_whatsapp` centraliza todo envio. Se o Twilio falhar
-(sandbox fora do ar, credenciais erradas, número inválido) **a API não
-quebra**: o erro é capturado, registrado na tabela `Notificacao` com
+`app/whatsapp.py:enviar_whatsapp` centraliza todo envio (chamada HTTP direta
+ao `graph.facebook.com`, sem SDK). Se a Cloud API falhar (token expirado,
+número de destino não verificado no modo de teste, número inválido) **a API
+não quebra**: o erro é capturado, registrado na tabela `Notificacao` com
 `status="falhou"` e `erro=<mensagem>`, e a request que disparou o envio
 continua normalmente (ex.: a inscrição é criada mesmo que o WhatsApp de
 confirmação falhe).
@@ -115,7 +116,7 @@ python -m venv .venv
 ./.venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
 # source .venv/bin/activate && pip install -r requirements.txt  # Mac/Linux
 
-cp .env.example .env   # preencha as credenciais do Twilio (opcional p/ rodar local)
+cp .env.example .env   # preencha as credenciais da Meta WhatsApp Cloud API (opcional p/ rodar local)
 ```
 
 ### 2. Rodar os testes automatizados
@@ -124,12 +125,12 @@ cp .env.example .env   # preencha as credenciais do Twilio (opcional p/ rodar lo
 ./.venv/Scripts/python.exe -m pytest tests/ -v
 ```
 
-7 testes cobrindo: inscrição → verificação de documentos → classificação →
+8 testes cobrindo: inscrição → verificação de documentos → classificação →
 seleção; erro ao selecionar sem unidade escolhida; bloqueio de troca de
-unidade fora da janela de 7 dias; inscrição inteira feita pelo WhatsApp;
-verificação mensal de telefone (disparo + resposta `SIM`); webhook sem
-inscrição encontrada. O Twilio é mockado nos testes — nenhuma mensagem real
-é enviada.
+unidade fora da janela de 7 dias; login por telefone + código (e isolamento
+entre famílias); inscrição inteira feita pelo WhatsApp; verificação mensal de
+telefone (disparo + resposta `SIM`); webhook sem inscrição encontrada. A
+Cloud API é mockada nos testes — nenhuma mensagem real é enviada.
 
 ### 3. Rodar a API localmente
 
@@ -163,22 +164,31 @@ curl -X POST http://localhost:8000/avancar_processo -H "Content-Type: applicatio
   -d '{"crianca_id": 1, "novo_status": "selecionado"}'
 ```
 
-### 4. Testar o WhatsApp de verdade (Twilio Sandbox)
+### 4. Testar o WhatsApp de verdade (Meta WhatsApp Cloud API)
 
-1. Crie uma conta em https://www.twilio.com/try-twilio e ative o **WhatsApp
-   Sandbox** em Console → Messaging → Try it out → Send a WhatsApp message.
-2. No seu celular, envie pelo WhatsApp a palavra de ativação (`join
-   <código-do-sandbox>`) para o número do sandbox — isso autoriza o Twilio a
-   te enviar mensagens.
-3. Copie `Account SID` e `Auth Token` do console para o `.env`.
-4. Para o Twilio conseguir chamar seu webhook local, exponha a porta com um
-   túnel (ex.: `ngrok http 8000`) e configure a URL pública + `/whatsapp/webhook`
-   em Console → Messaging → Sandbox settings → "When a message comes in".
-5. Envie `INSCRICAO` pelo WhatsApp para o número do sandbox — a máquina de
-   estados da inscrição deve responder pergunta por pergunta.
+1. Crie um app em https://developers.facebook.com/apps → tipo "Business" →
+   adicione o produto **WhatsApp**.
+2. Na página "API Setup" do produto, copie o **token de acesso temporário**
+   e o **Phone number ID** (número de teste da Meta) para `META_WHATSAPP_TOKEN`
+   e `META_PHONE_NUMBER_ID` no `.env`. Defina `META_VERIFY_TOKEN` como
+   qualquer string sua (ex.: `minha-verificacao-123`).
+3. Ainda em "API Setup", adicione o número de WhatsApp que vai receber as
+   mensagens em "To" e verifique-o com o código recebido (modo de teste:
+   limite de 5 números de destino).
+4. Configure o webhook em WhatsApp → Configuration → Callback URL. Como a
+   Meta precisa alcançar sua API publicamente, exponha a porta local com um
+   túnel (ex.: `ngrok http 8000`) e use `<url-do-ngrok>/whatsapp/webhook` como
+   Callback URL, com o mesmo valor de `META_VERIFY_TOKEN` no campo "Verify
+   token". Assine o campo `messages`.
+5. Envie `INSCRICAO` pelo WhatsApp (do número verificado no passo 3) para o
+   número de teste da Meta — a máquina de estados da inscrição deve
+   responder pergunta por pergunta.
 6. Rode `curl -X POST http://localhost:8000/jobs/verificar_telefones` para
    simular a verificação mensal sem esperar 30 dias, e responda `SIM` ou um
    novo número pelo WhatsApp.
+
+> O token temporário da Meta expira em ~24h; para uma demo mais longa, gere
+> um token permanente via Business Settings → System Users.
 
 ## Como integrar com as outras pessoas
 

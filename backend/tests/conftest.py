@@ -43,23 +43,21 @@ def client(db_session, monkeypatch):
 
     app.dependency_overrides[get_db] = _override_get_db
 
-    # Evita chamadas reais ao Twilio durante os testes: qualquer envio "sucede"
-    # sem credenciais, registrando a notificacao no banco de teste.
+    # Evita chamadas reais a Meta WhatsApp Cloud API durante os testes:
+    # qualquer envio "sucede" sem credenciais, registrando a notificacao no
+    # banco de teste.
     from app import whatsapp
 
-    class _FakeMessage:
-        sid = "SMfake000000000000000000000000"
+    class _FakeResponse:
+        status_code = 200
 
-    class _FakeMessages:
-        def create(self, **kwargs):
-            return _FakeMessage()
+        def json(self):
+            return {"messages": [{"id": "wamid.fake000000000000000000000000"}]}
 
-    class _FakeClient:
-        messages = _FakeMessages()
-
-    monkeypatch.setattr(whatsapp, "get_client", lambda: _FakeClient())
-    monkeypatch.setattr("app.config.TWILIO_ACCOUNT_SID", "ACfake")
-    monkeypatch.setattr("app.config.TWILIO_AUTH_TOKEN", "fake")
+    monkeypatch.setattr(whatsapp.httpx, "post", lambda *a, **k: _FakeResponse())
+    monkeypatch.setattr("app.config.META_WHATSAPP_TOKEN", "fake-token")
+    monkeypatch.setattr("app.config.META_PHONE_NUMBER_ID", "000000000000000")
+    monkeypatch.setattr("app.config.META_VERIFY_TOKEN", "fake-verify-token")
 
     with TestClient(app) as test_client:
         yield test_client

@@ -8,6 +8,23 @@ const USE_MOCK = false;
 const API_BASE = "https://hackaton-atropic-api.onrender.com";
 
 /* ------------------------------------------------------------
+   Auth — sessão da família (token opaco, guardado no localStorage).
+   Criada automaticamente ao se inscrever, ou via login por telefone +
+   código recebido no WhatsApp (para voltar depois, de outro aparelho).
+   ------------------------------------------------------------ */
+
+const Auth = {
+  TOKEN_KEY: "creche_auth_token",
+  getToken() { return localStorage.getItem(this.TOKEN_KEY); },
+  setToken(token) { if (token) localStorage.setItem(this.TOKEN_KEY, token); },
+  estaLogado() { return !!this.getToken(); },
+  sair() {
+    localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem("creche_crianca_id");
+  },
+};
+
+/* ------------------------------------------------------------
    Catálogo mock de unidades/programas — só usado quando USE_MOCK.
    Serve para o formulário de inscrição e para gerar respostas
    plausíveis e consistentes nas telas seguintes.
@@ -137,6 +154,16 @@ const MockStore = {
   load(criancaId) {
     const raw = localStorage.getItem(this.key(criancaId));
     return raw ? JSON.parse(raw) : null;
+  },
+  // índice telefone -> lista de crianca_id, só para o login mock (Api.minhasInscricoes)
+  telefoneKey(telefone) { return "creche_mock_por_telefone_" + telefone; },
+  registrarTelefone(telefone, criancaId) {
+    const lista = JSON.parse(localStorage.getItem(this.telefoneKey(telefone)) || "[]");
+    if (!lista.includes(criancaId)) lista.push(criancaId);
+    localStorage.setItem(this.telefoneKey(telefone), JSON.stringify(lista));
+  },
+  idsPorTelefone(telefone) {
+    return JSON.parse(localStorage.getItem(this.telefoneKey(telefone)) || "[]");
   },
 };
 
@@ -356,6 +383,8 @@ const MockApi = {
 
     const registro = {
       crianca_id: criancaId,
+      nome: payload.nome,
+      responsavel_telefone: payload.responsavel_telefone,
       bairro_cep: payload.bairro_cep,
       preferencias: payload.preferencias,
       respostas: payload.respostas,
@@ -374,12 +403,43 @@ const MockApi = {
     registro.status_matricula = gerarStatusMatriculaMock(registro);
 
     MockStore.save(criancaId, registro);
+    MockStore.registrarTelefone(payload.responsavel_telefone, criancaId);
 
     return {
       crianca_id: criancaId,
       score,
       unidade_comprovacao_sugerida: registro.unidade_comprovacao_sugerida,
+      token: "mock:" + payload.responsavel_telefone,
     };
+  },
+
+  // login por telefone: no modo mock nao ha codigo real (nem envio por
+  // WhatsApp), qualquer codigo de 6 digitos e aceito -- serve so pra manter
+  // a mesma tela funcionando sem depender do back.
+  async solicitarCodigo(_telefone) {
+    await delay(300);
+    return { mensagem: "Modo mock: qualquer código de 6 dígitos funciona." };
+  },
+
+  async verificarCodigo(telefone, _codigo) {
+    await delay(300);
+    return { token: "mock:" + telefone, telefone };
+  },
+
+  async minhasInscricoes() {
+    await delay(300);
+    const token = Auth.getToken() || "";
+    const telefone = token.startsWith("mock:") ? token.slice(5) : "";
+    return MockStore.idsPorTelefone(telefone).map((id) => {
+      const r = MockStore.load(id) || {};
+      return {
+        id,
+        nome: r.nome || "",
+        status: "inscrito",
+        score: r.score,
+        preferencias: r.preferencias || [],
+      };
+    });
   },
 
   async classificacao(criancaId) {
@@ -472,20 +532,21 @@ const MockApi = {
 async function httpJson(path, options) {
   let res;
   try {
-    res = await fetch(API_BASE + path, {
-      headers: { "Content-Type": "application/json" },
-      ...options,
-    });
+    const headers = { "Content-Type": "application/json" };
+    const token = Auth.getToken();
+    if (token) headers.Authorization = "Bearer " + token;
+    res = await fetch(API_BASE + path, { headers, ...options });
   } catch (e) {
     const err = new Error("Não foi possível conectar ao servidor.");
     err.status = 0;
     throw err;
   }
   if (!res.ok) {
+    if (res.status === 401) Auth.sair();
     let msg = "Erro inesperado (" + res.status + ").";
     try {
       const body = await res.json();
-      if (body && body.message) msg = body.message;
+      if (body && (body.message || body.detail)) msg = body.message || body.detail;
     } catch (_) { /* corpo sem json, mantém msg padrão */ }
     const err = new Error(msg);
     err.status = res.status;
@@ -560,7 +621,20 @@ const RealApi = {
         nome_unidade: sugerida.nome_unidade,
         distancia_km: menorDist === Infinity ? null : menorDist,
       } : null,
+      token: resp.token,
     };
+  },
+
+  solicitarCodigo(telefone) {
+    return httpJson("/auth/solicitar-codigo", { method: "POST", body: JSON.stringify({ telefone }) });
+  },
+
+  verificarCodigo(telefone, codigo) {
+    return httpJson("/auth/verificar-codigo", { method: "POST", body: JSON.stringify({ telefone, codigo }) });
+  },
+
+  minhasInscricoes() {
+    return httpJson("/minhas-inscricoes");
   },
 
   confirmarUnidade(criancaId, programaId) {
@@ -694,10 +768,25 @@ function _unidadesMockComCapacidade() {
 
 const Api = {
   listarUnidades: () => (USE_MOCK ? Promise.resolve(_unidadesMockComCapacidade()) : _carregarUnidades()),
-  enviarInscricao: (payload) => (USE_MOCK ? MockApi.inscricao(payload) : RealApi.inscricao(payload)),
+  enviarInscricao: async (payload) => {
+    const resposta = USE_MOCK ? await MockApi.inscricao(payload) : await RealApi.inscricao(payload);
+    Auth.setToken(resposta.token);
+    return resposta;
+  },
   confirmarUnidade: (criancaId, unidade) => (USE_MOCK ? MockApi.confirmarUnidade(criancaId, unidade) : RealApi.confirmarUnidade(criancaId, unidade)),
   preverPosicao: (criancaId, unidade, grupamento, turno) => (USE_MOCK ? MockApi.preverPosicao(criancaId, unidade, grupamento, turno) : RealApi.preverPosicao(criancaId, unidade, grupamento, turno)),
   buscarClassificacao: (criancaId) => (USE_MOCK ? MockApi.classificacao(criancaId) : RealApi.classificacao(criancaId)),
   trocarPreferencias: (criancaId, novaOrdem) => (USE_MOCK ? MockApi.trocar(criancaId, novaOrdem) : RealApi.trocar(criancaId, novaOrdem)),
   buscarStatusMatricula: (criancaId) => (USE_MOCK ? MockApi.statusMatricula(criancaId) : RealApi.statusMatricula(criancaId)),
+
+  // login por telefone + código via WhatsApp — ver login.html
+  solicitarCodigo: (telefone) => (USE_MOCK ? MockApi.solicitarCodigo(telefone) : RealApi.solicitarCodigo(telefone)),
+  verificarCodigo: async (telefone, codigo) => {
+    const sessao = USE_MOCK ? await MockApi.verificarCodigo(telefone, codigo) : await RealApi.verificarCodigo(telefone, codigo);
+    Auth.setToken(sessao.token);
+    return sessao;
+  },
+  minhasInscricoes: () => (USE_MOCK ? MockApi.minhasInscricoes() : RealApi.minhasInscricoes()),
+  estaLogado: () => Auth.estaLogado(),
+  sair: () => Auth.sair(),
 };
