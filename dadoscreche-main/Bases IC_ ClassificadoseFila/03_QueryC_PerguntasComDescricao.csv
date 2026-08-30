@@ -1,0 +1,66 @@
+﻿ano;prm_id;ich_perg_id;perg_id;pergunta_texto;pergunta_legenda;perg_ordemVisualizacao;perg_pontuacao;perg_criterio
+2021;179;95;2;"A criança tem alguma deficiência? ";NULL;1;100;Não
+2021;179;96;7;A criança tem déficit nutricional ou doença crônica ou familiar com doença crônica?;NULL;2;10;Não
+2021;179;97;8;Já ocorreu alguma situação de violência na residência da criança praticado por algum membro do núcleo familiar?;NULL;3;10;Não
+2021;179;98;9;Existe algum membro do núcleo familiar que faz uso de drogas ou é alcoólatra?;NULL;4;10;Não
+2021;179;120;12;Existe algum membro do núcleo familiar que é presidiário ou ex-presidiário nos últimos 5 anos?;NULL;5;5;Não
+2021;179;121;11;Faz parte do programa bolsa família?;NULL;6;100;Não
+2021;179;122;3;Possui Cartão Carioca?;NULL;7;100;Não
+2021;179;123;26;Possui irmão participando de processo classificatório na creche?;NULL;8;0;Sim
+2021;179;124;1;A mãe é mãe adolescente?;NULL;9;0;Sim
+2021;179;125;21;A criança pertence ao Programa Territórios Sociais?;NULL;10;100;Não
+2021;179;126;23;O candidato é refugiado?;NULL;11;10;Não
+2021;179;127;24;Candidato tem pais ou responsáveis com idade igual ou superior a sessenta anos ?;NULL;12;10;Não
+2021;179;128;25;Candidato tem pais ou responsáveis deficientes ?;NULL;13;10;Não
+2022;181;142;2;"A criança tem alguma deficiência? ";NULL;1;100;Não
+2022;181;143;7;A criança tem déficit nutricional ou doença crônica ou familiar com doença crônica?;NULL;2;10;Não
+2022;181;144;8;Já ocorreu alguma situação de violência na residência da criança praticado por algum membro do núcleo familiar?;NULL;3;10;Não
+2022;181;145;9;Existe algum membro do núcleo familiar que faz uso de drogas ou é alcoólatra?;NULL;4;10;Não
+2022;181;146;10;Existe algum membro do núcleo familiar que é presidiário ou ex-presidiário?;NULL;5;5;Não
+2022;181;147;11;Faz parte do programa bolsa família?;NULL;6;100;Não
+2022;181;148;3;Possui Cartão Carioca?;NULL;7;100;Não
+2022;181;149;26;Possui irmão participando de processo classificatório na creche?;NULL;8;0;Sim
+2022;181;150;1;A mãe é mãe adolescente?;NULL;9;0;Sim
+2022;181;151;21;A criança pertence ao Programa Territórios Sociais?;NULL;10;100;Não
+2022;181;152;23;O candidato é refugiado?;NULL;11;10;Não
+2022;181;153;24;Candidato tem pais ou responsáveis com idade igual ou superior a sessenta anos ?;NULL;12;10;Não
+2022;181;154;25;Candidato tem pais ou responsáveis deficientes ?;NULL;13;10;Não
+2023;184;155;2;"A criança tem alguma deficiência? ";NULL;1;100;Não
+2023;184;156;7;A criança tem déficit nutricional ou doença crônica ou familiar com doença crônica?;NULL;2;10;Não
+2023;184;157;8;Já ocorreu alguma situação de violência na residência da criança praticado por algum membro do núcleo familiar?;NULL;3;10;Não
+2023;184;158;9;Existe algum membro do núcleo familiar que faz uso de drogas ou é alcoólatra?;NULL;4;10;Não
+2023;184;168;12;Existe algum membro do núcleo familiar que é presidiário ou ex-presidiário nos últimos 5 anos?;NULL;5;5;Não
+2023;184;160;11;Faz parte do programa bolsa família?;NULL;6;100;Não
+2023;184;161;3;Possui Cartão Carioca?;NULL;7;100;Não
+2023;184;162;26;Possui irmão participando de processo classificatório na creche?;NULL;8;0;Sim
+2023;184;163;1;A mãe é mãe adolescente?;NULL;9;0;Sim
+2023;184;164;21;A criança pertence ao Programa Territórios Sociais?;NULL;10;100;Não
+2023;184;165;23;O candidato é refugiado?;NULL;11;10;Não
+2023;184;166;24;Candidato tem pais ou responsáveis com idade igual ou superior a sessenta anos ?;NULL;12;10;Não
+2023;184;167;25;Candidato tem pais ou responsáveis deficientes ?;NULL;13;10;Não
+2024;194;260;2;"A criança tem alguma deficiência? ";NULL;1;25;Não
+2024;194;261;28;Criança cuja família seja inscrita no CadÚnico (Cadastro Único para Programas Sociais)?;NULL;2;25;Não
+2024;194;264;6;Faz parte do programa bolsa família ou possui Cartão Carioca?;NULL;3;15;Não
+2024;194;265;17;A criança e/ou familiar do seu convívio diário é vitima de violência doméstica?;NULL;4;10;Não
+2024;194;266;16;Existe algum membro do núcleo familiar que faz uso abusivo de drogas e/ou alcoól?;NULL;5;10;Não
+2024;194;267;23;O candidato é refugiado?;NULL;6;5;Não
+2024;194;268;18;A criança e/ou alguém do núcleo familiar apresentam doenças crônicas graves?;NULL;7;3;Não
+2024;194;269;10;Existe algum membro do núcleo familiar que é presidiário ou ex-presidiário?;NULL;8;2;Não
+2024;194;270;25;Candidato tem pais ou responsáveis deficientes ?;NULL;9;2;Não
+2024;194;271;20;A criança pertence a família monoparental?;NULL;10;2;Não
+2024;194;272;27;Criança aguardou em fila de espera no ano anterior sem ter sido atendida?;NULL;11;1;Não
+2024;194;273;29;O Candidato possui irmão matriculado na rede pública ou parceria?;NULL;12;0;Sim
+2024;194;274;30;O Candidato possui pais ou responsáveis com idade menor que 18 anos?;NULL;13;0;Sim
+2025;195;275;28;Criança cuja família seja inscrita no CadÚnico (Cadastro Único para Programas Sociais)?;NULL;1;51;Não
+2025;195;288;31;A criança é público-alvo da educação especial?;NULL;2;25;Não
+2025;195;289;6;Faz parte do programa bolsa família ou possui Cartão Carioca?;NULL;3;2;Não
+2025;195;290;17;A criança e/ou familiar do seu convívio diário é vitima de violência doméstica?;NULL;4;4;Não
+2025;195;291;20;A criança pertence a família monoparental?;NULL;5;4;Não
+2025;195;280;25;Candidato tem pais ou responsáveis deficientes ?;NULL;6;3;Não
+2025;195;281;18;A criança e/ou alguém do núcleo familiar apresentam doenças crônicas graves?;NULL;7;3;Não
+2025;195;282;16;Existe algum membro do núcleo familiar que faz uso abusivo de drogas e/ou alcoól?;NULL;8;2;Não
+2025;195;283;12;Existe algum membro do núcleo familiar que é presidiário ou ex-presidiário nos últimos 5 anos?;NULL;9;2;Não
+2025;195;284;23;O candidato é refugiado?;NULL;10;2;Não
+2025;195;285;27;Criança aguardou em fila de espera no ano anterior sem ter sido atendida?;NULL;11;2;Não
+2025;195;286;29;O Candidato possui irmão matriculado na rede pública ou parceria?;NULL;12;0;Sim
+2025;195;287;30;O Candidato possui pais ou responsáveis com idade menor que 18 anos?;NULL;13;0;Sim

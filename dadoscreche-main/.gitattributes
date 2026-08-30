@@ -1,0 +1,13 @@
+# Os .gz sao binarios: nenhuma conversao de fim de linha pode tocar neles.
+# Sem esta regra o Git depende de heuristica, e um checkout no Windows com
+# core.autocrlf=true poderia corromper o arquivo compactado.
+*.gz binary
+
+# Demais binarios do repositorio.
+*.xlsx binary
+*.docx binary
+*.shp binary
+*.dbf binary
+*.sbn binary
+*.sbx binary
+*.shx binary
