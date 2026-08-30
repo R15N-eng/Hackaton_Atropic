@@ -18,8 +18,8 @@ trabalhado em paralelo. Para não haver dúvida:
 
 | Pasta | O que é | Usado pela API? |
 |---|---|---|
-| **`pessoa_1/`** | **Motor oficial** desde 30/08 15h. Deferred Acceptance com os critérios reais de desempate da SME (irmão na creche, mãe adolescente) + antiguidade da inscrição. Lê `data/*.parquet`, gerados por `python -m pessoa_1.build_data`. | ✅ **sim** — via `backend/app/engine_service.py` |
-| `backend/engine/` | Motor anterior (Deferred Acceptance com desempate só por loteria única) + `backend/data/*.parquet`. Mantido no repo: é o que produziu os números validados antes da troca, e serve de comparação. | ❌ não mais |
+| **`backend/engine/`** | **Motor oficial.** Deferred Acceptance (Gale–Shapley), desempate por loteria única reproduzível, sobre `backend/data/*.parquet` (commitado, não regenerado a cada deploy). | ✅ **sim** — via `backend/app/engine_service.py` |
+| `pessoa_1/` | Motor alternativo do Miguel: mesmo Deferred Acceptance, mas desempate pelos critérios reais da régua (irmão já matriculado, mãe adolescente) + antiguidade da inscrição, em vez de loteria. Esteve no ar entre 30/08 ~15h e ~15h50 — revertido para `backend/engine/` por dois motivos: (1) todo o material do pitch já escrito (inclusive o caso 0716601, corte 59/fila 343) foi validado contra `backend/engine/`, e re-auditar contra o motor novo não cabia no tempo restante; (2) o cold start no Render subiu de ~29s para ~170s com o build gerando os parquets a cada deploy. **Candidato natural para a próxima versão** — é mais fiel à régua real da SME — assim que houver tempo para revalidar os números e resolver o cold start (ex.: comitar os parquets gerados em vez de rebuildar). Nenhum trabalho do Miguel foi apagado: o motor, o pipeline e o teste (`backend/tests/test_engine_service.py`) continuam no repo, só não são o que a API usa agora. | ❌ não (revertido) |
 | `backend/app/classification_engine.py` | Régua de pontuação e fila do fluxo de inscrição **ao vivo** (SQLite), usado pelas telas de inscrição e pelo WhatsApp. Não é o motor de alocação. | ✅ só no fluxo de inscrição |
 
 `engine/` e `classification_engine.py` operam sobre **populações diferentes** e
@@ -36,14 +36,14 @@ processo de 2025 (`aluno_anon`), o segundo sobre as inscrições criadas na demo
 | Cenário | Colocadas | % na 1ª opção | Pref. média | % vulneráveis | % demais |
 |---|---:|---:|---:|---:|---:|
 | Real 2025 (por opção) | 48.680 | 72,2% | 1,47 | 78,0% | 76,8% |
-| **Motor oficial — `pessoa_1`** (por criança, desempate por critérios reais) | **47.618** | **79,5%** | **1,32** | **92,8%** | **59,4%** |
-| Motor anterior — `backend/engine/` (desempate só por loteria) | 47.768 | 83,9% | 1,24 | 93,5% | 59,2% |
+| **Motor oficial — `backend/engine/`** (por criança, desempate por loteria) | **47.768** | **83,9%** | **1,24** | **93,5%** | **59,2%** |
+| Motor alternativo — `pessoa_1` (desempate por critérios reais) | 47.618 | 79,5% | 1,32 | 92,8% | 59,4% |
 
-**Atendimento de famílias vulneráveis: +14,8 pp** sobre o processo real (78,0% → 92,8%).
+**Atendimento de famílias vulneráveis: +15,5 pp** sobre o processo real (78,0% → 93,5%).
 
-> ⚠️ Os números da linha do meio são os que a API serve hoje (`GET /motor/metricas`).
-> A terceira linha é o motor anterior, mantida porque parte do material do pitch foi
-> escrita com ela. **Se algum slide citar 83,9% ou 93,5%, está desatualizado.**
+> Estes são os números que a API serve hoje (`GET /motor/metricas`) e os que
+> aparecem no material do pitch. A linha do motor alternativo é referência para
+> quando ele for revalidado — não é o que está no ar.
 
 Duas leituras necessárias para não superinterpretar:
 
@@ -161,14 +161,14 @@ explicativo da regra da SME, não como funcionalidade.
   o declarou. Se a régua mudar de ano, a derivação muda junto.
 - **Nome de unidade casa em ~58%** das unidades (488 de 836). Onde não casa, a
   interface mostra o código — não inventa nome.
-- **Desempate: critérios reais, sem a régua documental completa.** O motor
-  oficial (`pessoa_1`) desempata por irmão já matriculado, responsável menor de
-  18 anos e antiguidade da inscrição — critérios que existem nos dados
-  históricos. Não é uma loteria cega, mas também não é a régua documental
-  completa da SME, que exigiria validação adicional de dado. O motor anterior
-  (`backend/engine/`) usava loteria única, que tem a vantagem de ser à prova de
-  estratégia; a troca ganhou aderência à regra real e perdeu essa garantia
-  formal. A comparação entre os dois está na tabela de números acima.
+- **Desempate por loteria única, não pelos critérios documentais da régua.**
+  O motor oficial (`backend/engine/`) desempata por sorteio único e reproduzível
+  — é determinístico, auditável e à prova de estratégia (declarar a preferência
+  verdadeira é sempre a melhor jogada). Ele **não** usa os critérios reais de
+  desempate da SME (irmão já matriculado, responsável menor de 18 anos), que
+  existem nos dados históricos e são explorados pelo motor alternativo
+  (`pessoa_1`, ver tabela acima) — não trocamos para ele nesta entrega por
+  falta de tempo para revalidar os números contra o material já escrito.
 - **Autenticação mínima.** Há login por telefone com código via WhatsApp para a
   família voltar de outro aparelho, mas o painel SME/CRE não tem autenticação
   nenhuma — é protótipo de demonstração, não sistema em produção.
