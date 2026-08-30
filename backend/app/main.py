@@ -36,6 +36,82 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+# ==========================================================================
+# MOTOR REAL — Deferred Acceptance sobre o processo de 2025 (Match Carioca)
+#
+# Estes endpoints servem os dois perfis do site (/familia e /sme) e leem do
+# motor em app/engine_service.py, que roda sobre backend/data/*.parquet.
+#
+# Atencao: esta e uma populacao DIFERENTE da do fluxo de inscricao ao vivo
+# (endpoints /inscricao, /classificacao/{id}, que gravam no SQLite). Aqui sao
+# as 62.899 criancas reais e anonimizadas do processo de 2025; la sao as
+# inscricoes criadas na demo. Os identificadores nao se cruzam de proposito:
+# aluno_anon (string) aqui, Crianca.id (int) la.
+# ==========================================================================
+
+@app.get("/motor/metricas")
+def motor_metricas() -> dict:
+    from app import engine_service
+    return engine_service.metricas_gerais()
+
+
+@app.get("/motor/programas")
+def motor_programas(busca: str = "", limite: int = 100) -> list[dict]:
+    from app import engine_service
+    return engine_service.listar_programas(busca=busca, limite=limite)
+
+
+@app.get("/motor/programa")
+def motor_programa(programa: str, limite_fila: int = 50) -> dict:
+    """`programa` e a chave composta unidade|grupamento|turno.
+    Vem como query param porque contem '|', que quebraria um path param."""
+    from app import engine_service
+    dados = engine_service.analise_por_programa(programa, limite_fila=limite_fila)
+    if dados is None:
+        raise HTTPException(404, f"Programa nao encontrado: {programa}")
+    return dados
+
+
+@app.get("/motor/crianca/{aluno_anon}")
+def motor_crianca(aluno_anon: str) -> dict:
+    from app import engine_service
+    dados = engine_service.serializar_crianca(aluno_anon)
+    if dados is None:
+        raise HTTPException(404, f"Crianca nao encontrada: {aluno_anon}")
+    return dados
+
+
+@app.get("/motor/criancas-exemplo")
+def motor_criancas_exemplo(limite: int = 12) -> list[dict]:
+    """Amostra de identificadores para o seletor da tela Familia — nao ha login
+    real, entao a familia escolhe de uma lista em vez de digitar no vazio.
+    Traz casos dos tres status para a banca poder testar cada um."""
+    from app import engine_service
+    return engine_service.amostra_criancas(limite=limite)
+
+
+@app.post("/motor/reclassificar/{aluno_anon}")
+def motor_reclassificar(aluno_anon: str) -> dict:
+    """Simula 'a familia nao confirmou a vaga': remove a crianca, roda o DA de
+    novo e devolve o diff — quem subiu, de onde para onde. Nao altera o estado
+    base, entao a demo pode repetir o mesmo cenario."""
+    from app import engine_service
+    resultado = engine_service.reclassificar_sem(aluno_anon)
+    if resultado.get("erro") == "crianca_nao_encontrada":
+        raise HTTPException(404, f"Crianca nao encontrada: {aluno_anon}")
+    return resultado
+
+
+@app.get("/motor/notificacoes")
+def motor_notificacoes(limite: int = 20) -> dict:
+    """Timeline de notificacoes. O Twilio nao tem credencial configurada neste
+    ambiente, entao os envios sao SIMULADOS — a resposta marca isso
+    explicitamente em `mock: true` para a tela poder avisar o usuario. Quando
+    as credenciais entrarem, esta funcao passa a ler a tabela Notificacao."""
+    from app import engine_service
+    return engine_service.timeline_notificacoes(limite=limite)
+
+
 # --------------------------------------------------------------------------
 # Programas (unidades)
 # --------------------------------------------------------------------------

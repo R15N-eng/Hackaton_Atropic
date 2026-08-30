@@ -385,6 +385,95 @@ def reclassificar_sem(aluno_anon: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Amostra para o seletor da tela Família (não há login real)
+# ---------------------------------------------------------------------------
+
+def amostra_criancas(limite: int = 12) -> list[dict]:
+    """Identificadores de exemplo cobrindo os três status, para a banca poder
+    testar cada caso sem adivinhar um `aluno_anon` válido."""
+    st = estado()
+    por_status: dict[str, list[dict]] = {
+        STATUS_DENTRO: [], STATUS_ESPERA: [], STATUS_FORA: [],
+    }
+    cota = max(1, limite // 3)
+
+    for cr in st.prefs:
+        if all(len(v) >= cota for v in por_status.values()):
+            break
+        c = serializar_crianca(cr)
+        if c and len(por_status[c["status"]]) < cota:
+            por_status[c["status"]].append({
+                "aluno_anon": c["aluno_anon"],
+                "score": c["score"],
+                "cadunico": c["cadunico"],
+                "status": c["status"],
+                "programa_alocado": c["programa_alocado"],
+                "posicao_na_lista_espera": c["posicao_na_lista_espera"],
+            })
+
+    saida = []
+    for status in (STATUS_DENTRO, STATUS_ESPERA, STATUS_FORA):
+        saida.extend(por_status[status])
+    return saida[:limite]
+
+
+# ---------------------------------------------------------------------------
+# Notificações — SIMULADAS (Twilio sem credencial neste ambiente)
+# ---------------------------------------------------------------------------
+
+def timeline_notificacoes(limite: int = 20) -> dict:
+    """Timeline de envios. **Dados simulados.**
+
+    O Twilio existe no backend mas não tem credencial configurada aqui, então
+    nenhuma mensagem real foi enviada. Esta função monta a timeline a partir de
+    dados REAIS do motor (quem foi alocado, em qual programa, com que score) e
+    simula apenas o *envio* — horário e status de confirmação. A resposta
+    carrega `mock: true` para a tela avisar o usuário, em vez de misturar
+    simulação com dado real sem sinalizar.
+    """
+    st = estado()
+    agora = dt.datetime.utcnow()
+
+    # ordem determinística: maior score primeiro (é a ordem em que a SME
+    # convocaria), para a timeline não mudar a cada recarga da página
+    alocadas = sorted(
+        st.alocacao.items(),
+        key=lambda kv: (-st.score.get(kv[0], 0.0), kv[0]),
+    )[:limite]
+
+    ciclo = ["confirmado", "aguardando", "expirado"]
+    eventos = []
+    for i, (cr, prog) in enumerate(alocadas):
+        info = st.programas.get(prog, {})
+        nome = _nome_unidade(st, info.get("unidade", "")) or str(info.get("unidade", ""))
+        enviado = agora - dt.timedelta(hours=i * 3 + 1)
+        eventos.append({
+            "aluno_anon": cr,
+            "programa": prog,
+            "unidade_nome": nome,
+            "canal": "whatsapp",
+            "enviado_em": enviado.isoformat() + "Z",
+            "texto": (
+                f"Prefeitura do Rio / SME: sua vaga de creche foi definida em "
+                f"{nome}. Compareca a unidade com os documentos para confirmar "
+                f"a matricula."
+            ),
+            "status_confirmacao": ciclo[i % len(ciclo)],
+        })
+
+    return {
+        "mock": True,
+        "aviso": (
+            "Envios simulados: o Twilio nao tem credencial configurada neste "
+            "ambiente. Criancas, programas e scores sao dados reais do motor; "
+            "horario de envio e status de confirmacao sao simulados."
+        ),
+        "total": len(eventos),
+        "eventos": eventos,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Métricas gerais (para o cabeçalho do painel SME)
 # ---------------------------------------------------------------------------
 
