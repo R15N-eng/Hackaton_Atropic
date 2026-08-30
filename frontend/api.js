@@ -5,7 +5,7 @@
    ============================================================ */
 
 const USE_MOCK = false;
-const API_BASE = "http://localhost:8000"; // ex: "https://api.creche.rio/v1"
+const API_BASE = "https://hackaton-atropic-api.onrender.com";
 
 /* ------------------------------------------------------------
    Catálogo mock de unidades/programas — só usado quando USE_MOCK.
