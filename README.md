@@ -1,5 +1,5 @@
 🔗 **Site:** https://r15n-eng.github.io/Hackaton_Atropic/
-🎥 **Vídeo:** _(em breve)_
+🎥 **Vídeo:** Na raiz do  git
 
 ---
 
