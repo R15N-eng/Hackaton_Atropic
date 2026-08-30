@@ -227,6 +227,51 @@ def _serializar_programa(programa: models.Programa, db: Session) -> schemas.Prog
 # Etapa 1: inscricao
 # --------------------------------------------------------------------------
 
+@app.delete("/inscricao/{crianca_id}")
+def excluir_inscricao(crianca_id: int, confirmar: bool = False, db: Session = Depends(get_db)):
+    """Remove UMA inscricao e o que depende dela (preferencias, notificacoes).
+
+    Existe para limpar registros de teste antes de uma demo ou gravacao: o time
+    inteiro testa o fluxo contra a mesma base, e o lixo acumulado aparece nas
+    telas na hora errada.
+
+    Deliberadamente pontual: apaga um `crianca_id` por chamada, e nunca toca em
+    `Programa` (o catalogo de unidades). Nao existe reset global — numa API sem
+    autenticacao, um endpoint que zera tudo de uma vez e um risco maior do que
+    o problema que resolveria.
+
+    Exige `?confirmar=true` para que um DELETE disparado por acidente (ou por um
+    crawler) nao apague nada.
+    """
+    crianca = db.get(models.Crianca, crianca_id)
+    if crianca is None:
+        raise HTTPException(404, "Crianca nao encontrada")
+    if not confirmar:
+        raise HTTPException(
+            400,
+            "Passe ?confirmar=true para excluir. Esta acao e irreversivel: "
+            f"apagaria a inscricao {crianca_id} ({crianca.nome}) e suas preferencias.",
+        )
+
+    db.query(models.Notificacao).filter(
+        models.Notificacao.crianca_id == crianca_id
+    ).delete(synchronize_session=False)
+    db.query(models.WhatsappSessao).filter(
+        models.WhatsappSessao.crianca_id == crianca_id
+    ).update({"crianca_id": None}, synchronize_session=False)
+    # Preferencia cai por cascade do relationship, mas apagamos explicitamente
+    # para nao depender da configuracao da sessao.
+    db.query(models.Preferencia).filter(
+        models.Preferencia.crianca_id == crianca_id
+    ).delete(synchronize_session=False)
+
+    nome = crianca.nome
+    db.delete(crianca)
+    db.commit()
+    logging.info("inscricao %s (%s) excluida via DELETE /inscricao", crianca_id, nome)
+    return {"ok": True, "crianca_id": crianca_id, "nome": nome, "excluida": True}
+
+
 @app.post("/inscricao", response_model=schemas.InscricaoOut)
 def inscrever(dados: schemas.InscricaoIn, db: Session = Depends(get_db)):
     crianca = crud.criar_inscricao(db, dados)
