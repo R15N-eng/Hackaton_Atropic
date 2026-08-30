@@ -203,11 +203,22 @@ class Programa:
 @dataclass(frozen=True)
 class ProgramaAlocado:
     """Programa + o resultado da classificacao. E o objeto que
-    `nota_corte_atual` e `posicao_na_fila` recebem."""
+    `nota_corte_atual` e `posicao_na_fila` recebem.
+
+    `scores` e opcional (`None` por padrao) -- o motor da regua
+    (`deferred_acceptance.py`) nao precisa dele, porque a prioridade e
+    `candidato.score.total`, igual em qualquer programa. O motor de rodadas
+    (`rodadas.py`) usa pontuacao por PAR (candidato, programa) -- ai `scores`
+    guarda o valor exato usado para ordenar, pelo mesmo motivo que
+    `vulnerabilidade.ProgramaClassificado.scores` existe: sem isso,
+    `rodadas.nota_corte_atual` teria que recalcular com os mesmos pesos, e
+    erraria silenciosamente se alguem passasse pesos diferentes.
+    """
 
     programa: Programa
     admitidos: tuple = ()  # Candidato, do melhor classificado ao pior
     fila: tuple = ()       # Candidato, ordenados por prioridade
+    scores: Optional[Mapping[str, float]] = None  # crianca_id -> pontuacao usada
 
     @property
     def programa_id(self) -> str:
