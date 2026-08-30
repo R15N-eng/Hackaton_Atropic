@@ -249,3 +249,109 @@ App.initInscricao = function () {
     }
   });
 };
+
+/* ============================================================
+   TELA 2 — Verificação / comprovação de documentos
+   ============================================================ */
+
+App.initVerificacao = function () {
+  const AUTO_CONFIRMA_SEGUNDOS = 20;
+  const root = App.qs("#conteudo-verificacao");
+  const criancaId = App.getCriancaId();
+
+  if (!criancaId) {
+    root.innerHTML = App.erroHtml("Não encontramos sua inscrição. Comece pela tela de inscrição.");
+    App.qs("#cta-continuar").style.display = "none";
+    return;
+  }
+
+  const dados = JSON.parse(localStorage.getItem("creche_inscricao_" + criancaId) || "null");
+  if (!dados || !dados.unidade_comprovacao_sugerida) {
+    root.innerHTML = App.erroHtml("Não encontramos os dados dessa inscrição neste aparelho. Se você já se inscreveu em outro celular, isso é esperado — fale com a equipe da creche.");
+    App.qs("#cta-continuar").style.display = "none";
+    return;
+  }
+
+  const sugerida = dados.unidade_comprovacao_sugerida;
+  const preferencias = dados.preferencias || [];
+  let escolhidaUnidade = sugerida.unidade;
+  let contadorId = null;
+  let segundosRestantes = AUTO_CONFIRMA_SEGUNDOS;
+
+  function nomeDaUnidade(codigoUnidade) {
+    const pref = preferencias.find((p) => p.unidade === codigoUnidade);
+    if (codigoUnidade === sugerida.unidade) return sugerida.nome_unidade;
+    const info = MOCK_UNIDADES.find((u) => u.unidade === codigoUnidade);
+    return info ? info.nome_unidade : (pref ? codigoUnidade : codigoUnidade);
+  }
+
+  function pararContador(motivoTexto) {
+    if (contadorId) clearInterval(contadorId);
+    const el = App.qs("#contador-auto");
+    if (el) el.outerHTML = motivoTexto ? `<p class="meta-line" id="contador-auto">${motivoTexto}</p>` : "";
+  }
+
+  function render() {
+    const distanciaTxt = sugerida.distancia_km != null ? `≈ ${String(sugerida.distancia_km).replace(".", ",")} km do bairro informado` : "distância não calculada";
+
+    const outrasOpcoes = preferencias.filter((p) => p.unidade !== sugerida.unidade);
+
+    root.innerHTML = `
+      <div class="card">
+        <p class="small-caps">Unidade sugerida para comprovação</p>
+        <p class="section-title" style="font-size:18px;margin-top:6px;">${sugerida.nome_unidade}</p>
+        <p class="section-sub" style="margin-bottom:0;">${distanciaTxt}</p>
+      </div>
+
+      <div style="margin-top:12px;">
+        ${App.bannerHtml("info", "Essa distância é aproximada, calculada pelo bairro informado — não temos o endereço exato da família, só o bairro (dado anonimizado por privacidade).")}
+      </div>
+
+      ${outrasOpcoes.length > 0 ? `
+      <div class="card" style="margin-top:12px;">
+        <p class="section-title">Prefere levar os documentos em outra unidade?</p>
+        <p class="section-sub">Só entre as opções que a família já escolheu na inscrição.</p>
+        <div class="stack-tight" id="opcoes-unidade" role="radiogroup">
+          ${[sugerida.unidade, ...outrasOpcoes.map((p) => p.unidade)].map((codigo) => `
+            <label class="pref-row" style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+              <input type="radio" name="unidade-comprovacao" value="${codigo}" ${codigo === escolhidaUnidade ? "checked" : ""} style="width:18px;height:18px;flex:none;">
+              <span>${nomeDaUnidade(codigo)}${codigo === sugerida.unidade ? " <span class=\"small-caps\">(sugerida)</span>" : ""}</span>
+            </label>
+          `).join("")}
+        </div>
+      </div>` : ""}
+
+      <p class="meta-line" id="contador-auto" style="margin-top:14px;">
+        <span class="countdown" id="countdown-badge">⏱ Confirmando a sugestão em ${segundosRestantes}s</span>
+      </p>
+    `;
+
+    const grupo = App.qs("#opcoes-unidade");
+    if (grupo) {
+      grupo.addEventListener("change", (e) => {
+        escolhidaUnidade = e.target.value;
+        pararContador("Unidade escolhida por você — não vamos alterar automaticamente.");
+      });
+    }
+  }
+
+  render();
+
+  contadorId = setInterval(() => {
+    segundosRestantes -= 1;
+    const badge = App.qs("#countdown-badge");
+    if (badge) badge.textContent = `⏱ Confirmando a sugestão em ${segundosRestantes}s`;
+    if (segundosRestantes <= 0) {
+      pararContador(`✓ Confirmamos a unidade sugerida automaticamente: ${sugerida.nome_unidade}.`);
+    }
+  }, 1000);
+
+  App.qs("#cta-continuar").addEventListener("click", () => {
+    pararContador();
+    localStorage.setItem("creche_comprovacao_" + criancaId, JSON.stringify({
+      unidade: escolhidaUnidade,
+      nome_unidade: nomeDaUnidade(escolhidaUnidade),
+    }));
+    App.goTo("classificacao.html", { crianca_id: criancaId });
+  });
+};
