@@ -129,9 +129,9 @@ App.initInscricao = function () {
           </select>
         </div>
         <div class="field" style="margin-bottom:0;">
-          <label>Turma</label>
+          <label>Faixa etária</label>
           <select class="input" data-campo="grupamento" required>
-            <option value="" disabled selected>Turma</option>
+            <option value="" disabled selected>Faixa etária</option>
             ${optionsHtml(GRUPAMENTOS)}
           </select>
         </div>

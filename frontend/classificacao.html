@@ -4,20 +4,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Minha posição na fila — Creche RJ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
 <header class="app-header">
-  <div class="brand"><span class="mark">🎒</span> Inscrição Creche</div>
-  <div class="stepper" aria-hidden="true">
-    <span class="step done"></span>
-    <span class="step done"></span>
-    <span class="step active"></span>
-    <span class="step"></span>
-  </div>
-  <p class="stepper-label">Etapa 3 de 4 — Acompanhamento da fila</p>
+  <div class="brand"><span class="mark" aria-hidden="true"></span> Inscrição Creche</div>
 </header>
+
+<div class="stepper-bar">
+  <ol class="stepper" aria-hidden="true">
+    <li class="stepper-step done"><span class="dot">1</span></li>
+    <li class="stepper-line done"></li>
+    <li class="stepper-step done"><span class="dot">2</span></li>
+    <li class="stepper-line done"></li>
+    <li class="stepper-step active"><span class="dot">3</span></li>
+    <li class="stepper-line"></li>
+    <li class="stepper-step"><span class="dot">4</span></li>
+  </ol>
+  <p class="stepper-label">Etapa 3 de 4 — Acompanhamento da fila</p>
+</div>
 
 <main class="container">
   <p class="eyebrow">Classificação</p>
