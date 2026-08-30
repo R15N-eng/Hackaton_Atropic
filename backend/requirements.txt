@@ -8,3 +8,9 @@ twilio==9.3.7
 apscheduler==3.10.4
 httpx==0.27.2
 pytest==8.3.3
+
+# motor de alocação (Deferred Acceptance) — engine/ + pipeline/ + data/*.parquet
+duckdb>=1.0
+pandas>=2.0
+openpyxl>=3.1
+pyarrow>=14.0
