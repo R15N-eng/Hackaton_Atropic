@@ -18,8 +18,8 @@ trabalhado em paralelo. Para não haver dúvida:
 
 | Pasta | O que é | Usado pela API? |
 |---|---|---|
-| **`backend/engine/`** | **Motor oficial.** Deferred Acceptance (Gale–Shapley) sobre `backend/data/*.parquet`. | ✅ **sim** — via `backend/app/engine_service.py` |
-| `pessoa_1/` | Motor de classificação desenvolvido em paralelo pelo Back A (régua + vulnerabilidade + distância). Mantido no repo como trabalho do time. | ❌ não |
+| **`pessoa_1/`** | **Motor oficial** desde 30/08 15h. Deferred Acceptance com os critérios reais de desempate da SME (irmão na creche, mãe adolescente) + antiguidade da inscrição. Lê `data/*.parquet`, gerados por `python -m pessoa_1.build_data`. | ✅ **sim** — via `backend/app/engine_service.py` |
+| `backend/engine/` | Motor anterior (Deferred Acceptance com desempate só por loteria única) + `backend/data/*.parquet`. Mantido no repo: é o que produziu os números validados antes da troca, e serve de comparação. | ❌ não mais |
 | `backend/app/classification_engine.py` | Régua de pontuação e fila do fluxo de inscrição **ao vivo** (SQLite), usado pelas telas de inscrição e pelo WhatsApp. Não é o motor de alocação. | ✅ só no fluxo de inscrição |
 
 `engine/` e `classification_engine.py` operam sobre **populações diferentes** e
@@ -36,9 +36,14 @@ processo de 2025 (`aluno_anon`), o segundo sobre as inscrições criadas na demo
 | Cenário | Colocadas | % na 1ª opção | Pref. média | % vulneráveis | % demais |
 |---|---:|---:|---:|---:|---:|
 | Real 2025 (por opção) | 48.680 | 72,2% | 1,47 | 78,0% | 76,8% |
-| **Deferred Acceptance (por criança)** | **47.768** | **83,9%** | **1,24** | **93,5%** | **59,2%** |
+| **Motor oficial — `pessoa_1`** (por criança, desempate por critérios reais) | **47.618** | **79,5%** | **1,32** | **92,8%** | **59,4%** |
+| Motor anterior — `backend/engine/` (desempate só por loteria) | 47.768 | 83,9% | 1,24 | 93,5% | 59,2% |
 
-**Atendimento de famílias vulneráveis: +15,5 pp.**
+**Atendimento de famílias vulneráveis: +14,8 pp** sobre o processo real (78,0% → 92,8%).
+
+> ⚠️ Os números da linha do meio são os que a API serve hoje (`GET /motor/metricas`).
+> A terceira linha é o motor anterior, mantida porque parte do material do pitch foi
+> escrita com ela. **Se algum slide citar 83,9% ou 93,5%, está desatualizado.**
 
 Duas leituras necessárias para não superinterpretar:
 
@@ -128,6 +133,21 @@ dadoscreche-main/   base bruta da SME + análise exploratória
 
 ---
 
+## Roadmap — desenhado, não implementado
+
+Está fora do protótipo de propósito, por tempo e risco. **Nenhuma tela simula
+estas funções como se estivessem prontas** — onde aparecem, aparecem como texto
+explicativo da regra da SME, não como funcionalidade.
+
+- **Ciclo de rodadas semanais** (fase de ranking + fase de chamada, estilo SISU).
+  Hoje o motor roda uma alocação completa e a reclassificação é sob demanda.
+- **Recálculo de pontuação na comprovação de documentos.** A tela de verificação
+  lista os critérios declarados e explica a regra ("critério não comprovado sai
+  do cálculo"), mas o sistema não confere documento nem recalcula — e a tela diz
+  isso, em vez de fingir que confere.
+- **Contagem de prazo real** (7 dias para trocar, prazo de resposta à
+  convocação). A janela aparece como informação, não como cronômetro com efeito.
+
 ## Limitações declaradas
 
 - **Notificações são simuladas.** O Twilio está integrado no backend mas sem
@@ -141,8 +161,17 @@ dadoscreche-main/   base bruta da SME + análise exploratória
   o declarou. Se a régua mudar de ano, a derivação muda junto.
 - **Nome de unidade casa em ~58%** das unidades (488 de 836). Onde não casa, a
   interface mostra o código — não inventa nome.
-- **Sem autenticação.** Os perfis são duas rotas, sem login: é protótipo de
-  demonstração, não sistema em produção.
+- **Desempate: critérios reais, sem a régua documental completa.** O motor
+  oficial (`pessoa_1`) desempata por irmão já matriculado, responsável menor de
+  18 anos e antiguidade da inscrição — critérios que existem nos dados
+  históricos. Não é uma loteria cega, mas também não é a régua documental
+  completa da SME, que exigiria validação adicional de dado. O motor anterior
+  (`backend/engine/`) usava loteria única, que tem a vantagem de ser à prova de
+  estratégia; a troca ganhou aderência à regra real e perdeu essa garantia
+  formal. A comparação entre os dois está na tabela de números acima.
+- **Autenticação mínima.** Há login por telefone com código via WhatsApp para a
+  família voltar de outro aparelho, mas o painel SME/CRE não tem autenticação
+  nenhuma — é protótipo de demonstração, não sistema em produção.
 - **Não há tempo de espera, distância exata nem renda** — esses dados não
   existem na base anonimizada e não são exibidos em nenhuma tela.
 

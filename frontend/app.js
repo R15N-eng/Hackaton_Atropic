@@ -350,7 +350,7 @@ App.initVerificacao = function () {
         </div>
       </div>
       <div style="margin-top:12px;">
-        ${App.bannerHtml("warning", "Se algum critério não puder ser comprovado com documento, ele é removido do cálculo — sua pontuação é recalculada sem ele, e sua posição na fila pode mudar. Isso não zera sua pontuação nem desclassifica sua inscrição.", "Importante")}
+        ${App.bannerHtml("warning", "Na regra da SME, um critério que não for comprovado com documento sai do cálculo: a pontuação é recalculada sem ele e a posição pode mudar — sem zerar a pontuação nem cancelar a inscrição. <b>Neste protótipo a conferência de documentos ainda não é feita pelo sistema</b>, então a pontuação exibida considera tudo o que foi declarado.", "Como funciona a comprovação")}
       </div>
       ` : `
       <div style="margin-top:12px;">
@@ -474,7 +474,7 @@ App.initClassificacao = function () {
         <div style="display:flex;justify-content:center;margin:10px 0 14px;">${badgeStatus(item.status)}</div>
         <div style="text-align:center;">
           ${podeTrocar
-            ? `<span class="countdown">⏳ Você pode trocar sua escolha por mais ${dias} dia${dias === 1 ? "" : "s"}</span>`
+            ? `<span class="countdown">⏳ Você ainda pode trocar sua escolha (${dias} ${dias === 1 ? "dia" : "dias"} de janela)</span>`
             : `<span class="countdown expired">Prazo para troca encerrado em ${App.formatDatePt(item.pode_trocar_ate)}</span>`}
         </div>
       </div>
@@ -530,7 +530,7 @@ App.initClassificacao = function () {
 
       <div id="area-recomendacoes"></div>
 
-      <p class="meta-line" style="margin-top:20px;justify-content:center;">🔄 Lista atualizada diariamente · última atualização: ${atualizadoEm}</p>
+      <p class="meta-line" style="margin-top:20px;justify-content:center;">🔄 Posição recalculada agora · ${atualizadoEm}</p>
     `;
 
     const btnTrocar = App.qs("#btn-trocar");

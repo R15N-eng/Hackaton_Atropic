@@ -25,11 +25,12 @@
     { n: 4, rotulo: "Matrícula", pagina: "status.html" },
   ];
 
-  // preserva o crianca_id ao navegar entre as etapas
+  // Navega SEM colocar o crianca_id na URL: o id fica só no localStorage
+  // deste aparelho, para não vazar em histórico do navegador, print de tela ou
+  // link compartilhado por WhatsApp (decisão do time em app.js:App.getCriancaId).
+  // Quem precisa acompanhar de outro aparelho entra por login.html.
   function comId(pagina) {
-    const id = new URLSearchParams(location.search).get("crianca_id")
-      || localStorage.getItem("creche_crianca_id");
-    return id ? `${pagina}?crianca_id=${encodeURIComponent(id)}` : pagina;
+    return pagina;
   }
 
   /* ------------------------------ cabeçalho ------------------------------ */
