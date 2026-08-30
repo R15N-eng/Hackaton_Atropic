@@ -13,6 +13,11 @@ const API_BASE = ""; // ex: "https://api.creche.rio/v1"
    plausíveis e consistentes nas telas seguintes.
    ------------------------------------------------------------ */
 
+// TODO(front): placeholder até o Back A publicar a lista real das 30 unidades
+// concentradas nos bairros de pior taxa de atendimento (código, nome, bairro,
+// lat/lon). Assim que tiver o array real, substituir esta lista mantendo os
+// mesmos nomes de campo (unidade, nome_unidade, bairro) — ou adicionar lat/lon
+// se a distância deixar de ser calculada por bairro.
 const MOCK_UNIDADES = [
   { unidade: "010134", nome_unidade: "Creche Cantinho Feliz de Santa Teresa", bairro: "Santa Teresa" },
   { unidade: "010055", nome_unidade: "Creche do Tuiuti", bairro: "Benfica" },
@@ -27,23 +32,43 @@ const MOCK_UNIDADES = [
 const GRUPAMENTOS = ["Berçário", "Maternal I", "Maternal II"];
 const TURNOS = ["Integral", "Parcial"];
 
-// perguntas de vulnerabilidade — texto placeholder, Back A envia o texto oficial depois
-const MOCK_PERGUNTAS = [
-  { perg_id: "p1", texto: "Família inscrita no CadÚnico (Cadastro Único)?" },
-  { perg_id: "p2", texto: "A criança tem alguma deficiência?" },
-  { perg_id: "p3", texto: "Família recebe Bolsa Família ou possui Cartão Carioca?" },
-  { perg_id: "p4", texto: "Já houve alguma situação de violência doméstica envolvendo a criança ou a família?" },
-  { perg_id: "p5", texto: "Algum membro da família faz uso abusivo de álcool ou drogas?" },
-  { perg_id: "p6", texto: "A criança ou algum familiar tem doença crônica grave?" },
-  { perg_id: "p7", texto: "Algum responsável está preso ou foi preso nos últimos 5 anos?" },
-  { perg_id: "p8", texto: "A criança é refugiada ou imigrante recente?" },
-  { perg_id: "p9", texto: "A família é monoparental (só um responsável presente)?" },
-  { perg_id: "p10", texto: "A criança ficou em fila de espera no ano anterior sem ser atendida?" },
+/* ------------------------------------------------------------
+   Régua oficial de classificação 2025 (13 perguntas, teto de 100
+   pontos) — Query C do dataset da SME. Texto, pontuação e critério
+   de desempate são reais, não placeholder. `criterio: true` marca
+   pergunta que só serve para desempate (vale 0 ponto na soma).
+   ------------------------------------------------------------ */
+
+const PERGUNTAS_2025 = [
+  { perg_id: 28, texto: "Criança cuja família seja inscrita no CadÚnico (Cadastro Único para Programas Sociais)?", pontos: 51, criterio: false },
+  { perg_id: 31, texto: "A criança é público-alvo da educação especial?", pontos: 25, criterio: false },
+  { perg_id: 17, texto: "A criança e/ou familiar do seu convívio diário é vitima de violência doméstica?", pontos: 4, criterio: false },
+  { perg_id: 20, texto: "A criança pertence a família monoparental?", pontos: 4, criterio: false },
+  { perg_id: 25, texto: "Candidato tem pais ou responsáveis deficientes?", pontos: 3, criterio: false },
+  { perg_id: 18, texto: "A criança e/ou alguém do núcleo familiar apresentam doenças crônicas graves?", pontos: 3, criterio: false },
+  { perg_id: 6, texto: "Faz parte do programa bolsa família ou possui Cartão Carioca?", pontos: 2, criterio: false },
+  { perg_id: 16, texto: "Existe algum membro do núcleo familiar que faz uso abusivo de drogas e/ou alcoól?", pontos: 2, criterio: false },
+  { perg_id: 12, texto: "Existe algum membro do núcleo familiar que é presidiário ou ex-presidiário nos últimos 5 anos?", pontos: 2, criterio: false },
+  { perg_id: 23, texto: "O candidato é refugiado?", pontos: 2, criterio: false },
+  { perg_id: 27, texto: "Criança aguardou em fila de espera no ano anterior sem ter sido atendida?", pontos: 2, criterio: false },
+  { perg_id: 29, texto: "O Candidato possui irmão matriculado na rede pública ou parceria?", pontos: 0, criterio: true },
+  { perg_id: 30, texto: "O Candidato possui pais ou responsáveis com idade menor que 18 anos?", pontos: 0, criterio: true },
 ];
 
-// peso mock de cada pergunta — só para o front ter um score plausível;
-// a régua oficial é responsabilidade do Back A
-const MOCK_PONTUACAO = { p1: 40, p2: 25, p3: 15, p4: 10, p5: 8, p6: 6, p7: 4, p8: 4, p9: 3, p10: 3 };
+// mantém o nome antigo funcionando (usado no formulário de inscrição)
+const MOCK_PERGUNTAS = PERGUNTAS_2025;
+
+const PONTOS_POR_PERGUNTA = Object.fromEntries(PERGUNTAS_2025.map((p) => [p.perg_id, p.pontos]));
+const SCORE_MAXIMO_2025 = PERGUNTAS_2025.reduce((soma, p) => soma + p.pontos, 0); // 100
+
+// devolve, entre as respostas "Sim" da família, os critérios declarados —
+// usado na tela de verificação para mostrar o que será conferido na
+// comprovação e o que vale cada um
+function criteriosDeclarados(respostas) {
+  return PERGUNTAS_2025
+    .filter((p) => (respostas || {})[p.perg_id] === true)
+    .sort((a, b) => b.pontos - a.pontos);
+}
 
 /* ------------------------------------------------------------
    Utilidades determinísticas (nada de Math.random em dado que
@@ -92,7 +117,7 @@ const MockStore = {
 function calcularScoreMock(respostas) {
   let score = 0;
   for (const [pergId, valor] of Object.entries(respostas || {})) {
-    if (valor) score += MOCK_PONTUACAO[pergId] || 0;
+    if (valor) score += PONTOS_POR_PERGUNTA[pergId] || 0;
   }
   return score;
 }
@@ -117,15 +142,27 @@ function montarProgramaFromPref(pref) {
   };
 }
 
+// TODO(front): preencher com a amostra real de capacidade/demanda/nota de
+// corte por programa (unidade+grupamento+turno) assim que o Back A publicar
+// o array — ex.: "0716601|Maternal II|Integral": { capacidade: 6, demanda: 483, notaCorte: 2 }.
+// Enquanto a chave não existir aqui, o programa continua com números
+// pseudo-aleatórios (determinísticos) só para a tela não ficar vazia.
+const PROGRAMAS_REAIS_2025 = {
+  // "0716601|Maternal II|Integral": { capacidade: 6, demanda: 483, notaCorte: 2 },
+  // "0716603|Maternal I|Integral": { capacidade: 2, demanda: null, notaCorte: 53 },
+};
+
 function gerarClassificacaoMock(criancaId, registro) {
   const { preferencias, score, criado_em } = registro;
 
   const classificacoes = preferencias.map((pref) => {
     const programa = montarProgramaFromPref(pref);
     const chaveProg = `${programa.unidade}|${programa.grupamento}|${programa.turno}`;
-    const capacidade = seededInt(chaveProg, 12, 40);
-    const totalFila = capacidade + seededInt(chaveProg + "|fila", 15, 140);
-    const notaCorte = seededInt(chaveProg + "|corte", 10, 70);
+    const real = PROGRAMAS_REAIS_2025[chaveProg];
+
+    const capacidade = real ? real.capacidade : seededInt(chaveProg, 12, 40);
+    const totalFila = real ? (real.demanda || real.capacidade) : capacidade + seededInt(chaveProg + "|fila", 15, 140);
+    const notaCorte = real ? real.notaCorte : seededInt(chaveProg + "|corte", 10, SCORE_MAXIMO_2025);
 
     // score mais alto -> posição melhor (menor número)
     const baseDisputa = seededInt(criancaId + "|" + chaveProg, 1, totalFila);
@@ -156,7 +193,8 @@ function gerarClassificacaoMock(criancaId, registro) {
     const grupamento = preferencias[0] ? preferencias[0].grupamento : GRUPAMENTOS[0];
     const turno = preferencias[0] ? preferencias[0].turno : TURNOS[0];
     const chaveProg = `${u.unidade}|${grupamento}|${turno}`;
-    const notaCorte = seededInt(chaveProg + "|corte", 10, 70);
+    const real = PROGRAMAS_REAIS_2025[chaveProg];
+    const notaCorte = real ? real.notaCorte : seededInt(chaveProg + "|corte", 10, SCORE_MAXIMO_2025);
     let chance;
     if (score >= notaCorte) chance = "alta";
     else if (score >= notaCorte - 20) chance = "media";

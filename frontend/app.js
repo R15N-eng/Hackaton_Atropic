@@ -239,6 +239,8 @@ App.initInscricao = function () {
       localStorage.setItem("creche_inscricao_" + resposta.crianca_id, JSON.stringify({
         bairro_cep: bairroCep,
         preferencias,
+        respostas,
+        score: resposta.score,
         unidade_comprovacao_sugerida: resposta.unidade_comprovacao_sugerida,
       }));
       App.goTo("verificacao.html", { crianca_id: resposta.crianca_id });
@@ -295,6 +297,7 @@ App.initVerificacao = function () {
     const distanciaTxt = sugerida.distancia_km != null ? `≈ ${String(sugerida.distancia_km).replace(".", ",")} km do bairro informado` : "distância não calculada";
 
     const outrasOpcoes = preferencias.filter((p) => p.unidade !== sugerida.unidade);
+    const criterios = criteriosDeclarados(dados.respostas);
 
     root.innerHTML = `
       <div class="card">
@@ -306,6 +309,30 @@ App.initVerificacao = function () {
       <div style="margin-top:12px;">
         ${App.bannerHtml("info", "Essa distância é aproximada, calculada pelo bairro informado — não temos o endereço exato da família, só o bairro (dado anonimizado por privacidade).")}
       </div>
+
+      ${criterios.length > 0 ? `
+      <div class="card" style="margin-top:12px;">
+        <p class="section-title">Critérios que você declarou</p>
+        <p class="section-sub">Leve os documentos que comprovem cada um. Sua pontuação atual (${dados.score} de ${SCORE_MAXIMO_2025} pontos) considera todos eles.</p>
+        <div class="stack-tight">
+          ${criterios.map((c) => `
+            <div class="pref-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <span style="font-size:13.5px;">${c.texto}</span>
+              ${c.criterio
+                ? `<span class="badge badge-baixa" style="flex:none;">Critério de desempate</span>`
+                : `<span class="badge badge-media" style="flex:none;">+${c.pontos} pts</span>`}
+            </div>
+          `).join("")}
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        ${App.bannerHtml("warning", "Se algum critério não puder ser comprovado com documento, ele é removido do cálculo — sua pontuação é recalculada sem ele, e sua posição na fila pode mudar. Isso não zera sua pontuação nem desclassifica sua inscrição.", "Importante")}
+      </div>
+      ` : `
+      <div style="margin-top:12px;">
+        ${App.bannerHtml("info", "Você não declarou nenhum critério de pontuação — sua posição na fila segue pela ordem de inscrição e critérios de desempate.")}
+      </div>
+      `}
 
       ${outrasOpcoes.length > 0 ? `
       <div class="card" style="margin-top:12px;">
