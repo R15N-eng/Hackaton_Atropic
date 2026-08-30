@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from pessoa_1.localizacao import Localizacao, distancia_km
+from pessoa_1.modelos import Score
 from pessoa_1.vulnerabilidade import (
     Candidato,
     Escola,
@@ -24,10 +25,16 @@ def localizacao(lat=0.0, lon=0.0) -> Localizacao:
 
 
 def candidato(vulnerabilidade=None, localizacoes=None) -> Candidato:
+    """`vulnerabilidade` e so uma forma legivel de dizer quantas perguntas
+    contam como 'Sim' -- os nomes das chaves nao importam (Candidato.score
+    usa perg_id inteiro por dentro), so quantas tem valor truthy.
+    `localizacoes=None` fica None de proposito -- e o default do Candidato."""
+    marcadas = sum(1 for v in (vulnerabilidade or {}).values() if v)
+    score = Score(total=0, detalhe={i: 1 for i in range(marcadas)})
     return Candidato(
         crianca_id="c1",
-        vulnerabilidade=vulnerabilidade or {},
-        localizacoes=localizacoes or (localizacao(), localizacao()),
+        score=score,
+        localizacoes=localizacoes if localizacoes is not None else (localizacao(), localizacao()),
     )
 
 
@@ -64,14 +71,38 @@ def test_sem_flags_da_zero():
     assert pontuacao_vulnerabilidade(candidato({})) == 0.0
 
 
-def test_flag_fora_de_0_1_falha_alto():
-    with pytest.raises(ValueError, match="so aceita 0/1"):
-        candidato({"bolsa_familia": 2})
+def test_pontuacao_vulnerabilidade_conta_perguntas_nao_pontos():
+    """Cada pergunta pontuada conta 1, nao importa quantos pontos ela vale na
+    regua -- pontuacao_vulnerabilidade NAO e o mesmo numero que score.total.
+    E o motivo de derivar de Score.detalhe/desempates em vez de um dict
+    proprio: a mesma fonte serve pra dois calculos diferentes."""
+    score = Score(total=151, detalhe={28: 51, 31: 100})  # 2 perguntas, 151 pontos
+    c = Candidato(crianca_id="c1", score=score, localizacoes=(localizacao(), localizacao()))
+    assert pontuacao_vulnerabilidade(c) == 2.0
+    assert c.score.total == 151
 
 
-def test_candidato_exige_exatamente_duas_localizacoes():
-    with pytest.raises(ValueError, match="exatamente 2 localizacoes"):
-        Candidato(crianca_id="c1", vulnerabilidade={}, localizacoes=(localizacao(),))
+def test_pontuacao_vulnerabilidade_soma_pontuadas_e_desempates():
+    score = Score(total=51, detalhe={28: 51}, desempates=frozenset({29, 30}))
+    c = Candidato(crianca_id="c1", score=score, localizacoes=(localizacao(), localizacao()))
+    assert pontuacao_vulnerabilidade(c) == 3.0  # 1 pontuada + 2 de criterio
+
+
+def test_candidato_exige_exatamente_duas_localizacoes_ou_nenhuma():
+    with pytest.raises(ValueError, match="exatamente 2"):
+        Candidato(crianca_id="c1", score=Score(total=0), localizacoes=(localizacao(),))
+
+
+def test_candidato_aceita_localizacoes_none():
+    c = Candidato(crianca_id="c1", score=Score(total=0), localizacoes=None)
+    assert c.localizacoes is None
+
+
+def test_menor_distancia_falha_sem_localizacoes():
+    c = Candidato(crianca_id="c1", score=Score(total=0), localizacoes=None)
+    escola = Escola(escola_id="E1", localizacao=localizacao())
+    with pytest.raises(ValueError, match="sem localizacoes"):
+        menor_distancia_km(c, escola)
 
 
 # --- menor_distancia_km -----------------------------------------------------
@@ -164,6 +195,6 @@ def test_score_zero_quando_sem_vulnerabilidade_e_fora_do_alcance():
 def test_calcular_score_nao_muta_as_entradas():
     c = candidato({"bolsa_familia": 1})
     escola = Escola(escola_id="E1", localizacao=localizacao())
-    antes = (dict(c.vulnerabilidade), c.localizacoes)
+    antes = (dict(c.score.detalhe), c.localizacoes)
     calcular_score(c, escola)
-    assert (dict(c.vulnerabilidade), c.localizacoes) == antes
+    assert (dict(c.score.detalhe), c.localizacoes) == antes

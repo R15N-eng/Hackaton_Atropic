@@ -134,18 +134,30 @@ Linha de trabalho separada, ainda não integrada às quatro funções acima.
 (`float`), soma ponderada de duas peças pequenas e testáveis isoladamente:
 
 ```python
-score = peso_vulnerabilidade * pontuacao_vulnerabilidade(candidato)   # soma de flags 0/1
+score = peso_vulnerabilidade * pontuacao_vulnerabilidade(candidato)   # conta perguntas 'Sim', sem peso
       + peso_distancia       * pontuacao_distancia(menor_distancia)   # 1.0 na porta, decai a 0 em alcance_km
 ```
 
-`vulnerabilidade.Candidato` e `vulnerabilidade.Escola` são tipos próprios deste
-módulo — **não** são `modelos.Candidato`/`modelos.Programa`. O candidato tem
-duas `Localizacao` (usa-se a mais próxima da escola); a escola tem uma.
-Distância é haversine em linha reta ([localizacao.py](localizacao.py)), não
-rota real. Pesos e `alcance_km` são parâmetros com default, não um contrato
-fixo — ainda não decidimos se isso substitui a régua da SME, entra como
-critério paralelo, ou se junta ao `Score` que o Deferred Acceptance consome.
-Isso é a próxima decisão, via o "contrato externo" mencionado.
+**`Candidato` é um tipo único, em `modelos.py`** — usado tanto pelo motor da
+régua quanto por esta linha. Até pouco atrás `vulnerabilidade.py` tinha o seu
+próprio `Candidato`, com um dict de flags separado guardando a mesma
+informação que `Score` já guarda. `pontuacao_vulnerabilidade` deriva direto de
+`Score.detalhe` + `Score.desempates` (a união das duas é toda pergunta de
+vulnerabilidade que a família confirmou, pontuada ou só critério) — conta
+**perguntas**, não pontos: uma pergunta que vale 51 na régua conta 1 aqui,
+igual a uma que vale 2. `vulnerabilidade.Escola` continua próprio deste
+módulo — o motor da régua não tem noção de localização geográfica.
+
+`Candidato.localizacoes` é opcional (`None` por padrão — "sem dado
+geocodificado"); o candidato tem duas `Localizacao` quando disponíveis
+(usa-se a mais próxima da escola), a escola tem uma. `menor_distancia_km`
+levanta erro claro se chamado com um candidato sem localizações, em vez de
+inventar uma distância. Distância é haversine em linha reta
+([localizacao.py](localizacao.py)), não rota real. Pesos e `alcance_km` são
+parâmetros com default, não um contrato fixo — ainda não decidimos se isso
+substitui a régua da SME, entra como critério paralelo, ou se junta ao
+`Score` que o Deferred Acceptance consome. Isso é a próxima decisão, via o
+"contrato externo" mencionado.
 
 **Cada escola tem sua própria classificação.** `EscolaClassificada` = uma
 `Escola` + os candidatos que a listaram, já ordenados pelo `calcular_score`

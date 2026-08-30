@@ -7,6 +7,7 @@ from __future__ import annotations
 import pytest
 
 from pessoa_1.localizacao import Localizacao
+from pessoa_1.modelos import Score
 from pessoa_1.vulnerabilidade import (
     Candidato,
     Escola,
@@ -22,9 +23,13 @@ def loc(lat=0.0, lon=0.0) -> Localizacao:
 
 
 def cand(crianca_id, vulnerabilidade=None, localizacoes=None) -> Candidato:
+    """`vulnerabilidade` e so uma forma legivel de dizer quantas perguntas
+    contam como 'Sim' -- ver test_vulnerabilidade.py para o porque."""
+    marcadas = sum(1 for v in (vulnerabilidade or {}).values() if v)
+    score = Score(total=0, detalhe={i: 1 for i in range(marcadas)})
     return Candidato(
         crianca_id=crianca_id,
-        vulnerabilidade=vulnerabilidade or {},
+        score=score,
         localizacoes=localizacoes or (loc(), loc()),
     )
 

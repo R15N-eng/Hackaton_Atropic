@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Iterable, Mapping, Optional
 
 from .contrato import DESEMPATE_ORDEM
+from .localizacao import Localizacao
 
 # datetime sentinela para inscricao sem data: perde o desempate por antiguidade.
 SEM_DATA = datetime.max
@@ -114,18 +115,42 @@ def _total(valor) -> int:
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class Candidato:
-    """Uma inscricao: a crianca com seu score e sua lista ordenada de opcoes.
+    """Uma crianca inscrita: score, preferencias e (quando disponivel) as
+    localizacoes usadas na linha de distancia. Classe unica -- ate pouco
+    atras `vulnerabilidade.py` tinha o seu proprio `Candidato`, com um dict
+    de flags separado guardando a mesma informacao que `score` ja guarda.
+
+    `score` e a UNICA fonte de verdade sobre quais perguntas a familia
+    respondeu 'Sim': tanto para o motor da regua oficial (`score.total`)
+    quanto para a contagem de vulnerabilidade sem peso, usada na linha de
+    distancia (`vulnerabilidade.pontuacao_vulnerabilidade`, que le
+    `score.detalhe` + `score.desempates` -- a uniao das duas e toda pergunta
+    de vulnerabilidade que a familia confirmou, pontuada ou so criterio).
 
     `preferencias` vem da coluna `opcao` (1 = primeira escolha). E a lista de
     preferencias do lado das familias no Deferred Acceptance.
+
+    `localizacoes` e opcional (`None` por padrao): so existe pra quem ja tem
+    endereco geocodificado. `None` significa "sem dado" -- funcoes que
+    precisam de distancia (ex.: `vulnerabilidade.menor_distancia_km`) levantam
+    erro claro se chamadas com um candidato sem localizacoes, em vez de
+    silenciosamente inventar uma distancia.
     """
 
     crianca_id: str
     score: Score
     preferencias: tuple = ()          # programa_id, da mais desejada para a menos
+    localizacoes: Optional[tuple[Localizacao, Localizacao]] = None
     data_criacao: datetime = SEM_DATA
     ipl_id: Optional[int] = None
     ano: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.localizacoes is not None and len(self.localizacoes) != 2:
+            raise ValueError(
+                f"localizacoes precisa ter exatamente 2 (ou None), recebeu "
+                f"{len(self.localizacoes)}"
+            )
 
     def rank_da_preferencia(self, programa_id: Optional[str]) -> Optional[int]:
         """0 para a primeira opcao. None se o programa nao esta na lista."""

@@ -2,12 +2,16 @@
 regua oficial da SME (`score.py`, que usa a Query C e responde por `Score`,
 o tipo consumido pelo Deferred Acceptance).
 
-Aqui o objetivo e outro: media modularmente vulnerabilidade (variaveis 0/1,
-sem peso de régua) e distancia ate a escola, uma peca por vez, para depois
-decidir -- via um contrato externo ainda nao definido -- se/como isso se
-combina com o score oficial. Por isso os tipos `Candidato` e `Escola` deste
-modulo sao proprios, distintos de `modelos.Candidato`/`modelos.Programa`: nao
-tem `preferencias`, `data_criacao` nem vagas, so o que a conta de hoje precisa.
+Aqui o objetivo e outro: medir modularmente vulnerabilidade (sem peso de
+regua) e distancia ate a escola, uma peca por vez, para depois decidir -- via
+um contrato externo ainda nao definido -- se/como isso se combina com o score
+oficial no ranking do Deferred Acceptance.
+
+`Candidato` e o mesmo tipo usado no motor da regua (`modelos.Candidato`) --
+ate pouco atras este modulo tinha o seu proprio, com um dict de flags
+guardando a mesma informacao que `Score` ja guarda (ver `pontuacao_
+vulnerabilidade` abaixo). `Escola`, por outro lado, e proprio deste modulo:
+o motor da regua nao tem noção de localizacao geografica nem esse tipo.
 
 `calcular_score` daqui devolve so o numero (`float`), como pedido -- sem
 detalhe, sem desempate. Pesos e alcance sao parametros com default, nao um
@@ -21,28 +25,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping, Optional
 
 from .localizacao import Localizacao, distancia_km
-
-
-@dataclass(frozen=True)
-class Candidato:
-    """Vista da crianca para este calculo: flags de vulnerabilidade (0/1) e
-    as DUAS localizacoes candidatas (ex.: endereco do responsavel 1 e do
-    responsavel 2) -- usa-se a que estiver mais perto da escola.
-    """
-
-    crianca_id: str
-    vulnerabilidade: Mapping[str, int]          # nome do criterio -> 0 ou 1
-    localizacoes: tuple[Localizacao, Localizacao]
-
-    def __post_init__(self) -> None:
-        if len(self.localizacoes) != 2:
-            raise ValueError(
-                f"Candidato precisa de exatamente 2 localizacoes, recebeu "
-                f"{len(self.localizacoes)}"
-            )
-        invalidas = {k: v for k, v in self.vulnerabilidade.items() if v not in (0, 1)}
-        if invalidas:
-            raise ValueError(f"vulnerabilidade so aceita 0/1: {invalidas!r}")
+from .modelos import Candidato  # re-exportado -- import via este modulo continua valido
 
 
 @dataclass(frozen=True)
@@ -65,9 +48,17 @@ class Escola:
 
 
 def pontuacao_vulnerabilidade(candidato: Candidato) -> float:
-    """Soma das flags de vulnerabilidade (0/1). Sem peso -- cada criterio
-    marcado vale 1 ponto, diferente da regua da SME em `score.py`."""
-    return float(sum(candidato.vulnerabilidade.values()))
+    """Conta quantas perguntas de vulnerabilidade a familia respondeu 'Sim',
+    sem peso -- cada uma vale 1 ponto aqui, diferente de `candidato.score.total`
+    (que usa o peso da regua da SME).
+
+    Deriva do `Score`, nao guarda um dict proprio: `score.detalhe` tem as
+    perguntas que pontuaram na regua, `score.desempates` as marcadas so como
+    criterio (0 ponto na regua). A uniao das duas e toda pergunta de
+    vulnerabilidade que a familia confirmou -- e o que se soma aqui, contando
+    perguntas, nao pontos.
+    """
+    return float(len(candidato.score.detalhe) + len(candidato.score.desempates))
 
 
 def menor_distancia_km(candidato: Candidato, escola: Escola) -> float:
@@ -76,7 +67,16 @@ def menor_distancia_km(candidato: Candidato, escola: Escola) -> float:
     E essa que entra na pontuacao: usamos a localizacao que favorece a
     crianca, nao uma media -- ter um endereco mais proximo da escola conta a
     favor dela.
+
+    Levanta erro se o candidato nao tiver `localizacoes` (endereco ainda nao
+    geocodificado) -- nao ha como calcular distancia sem elas, e inventar uma
+    (ex.: 0 ou infinito) esconderia o problema em vez de avisar.
     """
+    if candidato.localizacoes is None:
+        raise ValueError(
+            f"{candidato.crianca_id!r} sem localizacoes -- nao e possivel "
+            "calcular distancia"
+        )
     return min(distancia_km(loc, escola.localizacao) for loc in candidato.localizacoes)
 
 
