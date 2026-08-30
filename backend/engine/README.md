@@ -2,6 +2,13 @@
 
 Motor de alocação de vagas de creche para a SME-Rio, com simulador de política.
 
+> **Este motor não é mais usado pela API.** `backend/app/engine_service.py`
+> passou a chamar o motor da Pessoa 1 (`pessoa_1/` na raiz do repo), que
+> preserva os critérios reais de desempate por pergunta (irmão na creche,
+> mãe adolescente) — este parquet aqui só guarda o score somado. `simulate.py`
+> e `evidencia_injustica.py` continuam usando `deferred_acceptance.py` daqui
+> como ferramenta de análise/comparação, independente da API.
+
 Substitui a classificação **por opção** (atual) por uma alocação **por criança**
 usando Deferred Acceptance, e mede o resultado contra o processo real de 2025.
 
