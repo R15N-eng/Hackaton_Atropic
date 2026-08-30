@@ -130,75 +130,95 @@ dois casos tem que vir vazio, e o motor é testado contra isso nos dados reais.
 ## Em construção — score por vulnerabilidade + distância
 
 Linha de trabalho separada, ainda não integrada às quatro funções acima.
-`vulnerabilidade.calcular_score(candidato, escola)` devolve **só o número**
+`vulnerabilidade.calcular_score(candidato, programa)` devolve **só o número**
 (`float`), soma ponderada de duas peças pequenas e testáveis isoladamente:
 
 ```python
-score = peso_vulnerabilidade * pontuacao_vulnerabilidade(candidato)   # soma de flags 0/1
+score = peso_vulnerabilidade * pontuacao_vulnerabilidade(candidato)   # conta perguntas 'Sim', sem peso
       + peso_distancia       * pontuacao_distancia(menor_distancia)   # 1.0 na porta, decai a 0 em alcance_km
 ```
 
-`vulnerabilidade.Candidato` e `vulnerabilidade.Escola` são tipos próprios deste
-módulo — **não** são `modelos.Candidato`/`modelos.Programa`. O candidato tem
-duas `Localizacao` (usa-se a mais próxima da escola); a escola tem uma.
-Distância é haversine em linha reta ([localizacao.py](localizacao.py)), não
-rota real. Pesos e `alcance_km` são parâmetros com default, não um contrato
-fixo — ainda não decidimos se isso substitui a régua da SME, entra como
-critério paralelo, ou se junta ao `Score` que o Deferred Acceptance consome.
-Isso é a próxima decisão, via o "contrato externo" mencionado.
+**`Candidato` e `Programa` são tipos únicos, em `modelos.py`** — usados tanto
+pelo motor da régua quanto por esta linha. Até pouco atrás `vulnerabilidade.py`
+tinha os seus próprios: um `Candidato` com um dict de flags separado guardando
+a mesma informação que `Score` já guarda, e um `Escola` (identidade +
+localização + vagas) representando a mesma noção de "onde a vaga existe" que
+`Programa` já representa. `pontuacao_vulnerabilidade` deriva direto de
+`Score.detalhe` + `Score.desempates` (a união das duas é toda pergunta de
+vulnerabilidade que a família confirmou, pontuada ou só critério) — conta
+**perguntas**, não pontos: uma pergunta que vale 51 na régua conta 1 aqui,
+igual a uma que vale 2.
 
-**Cada escola tem sua própria classificação.** `EscolaClassificada` = uma
-`Escola` + os candidatos que a listaram, já ordenados pelo `calcular_score`
-acima (melhor primeiro). É montada por `classificar_escola(escola,
-candidatos)`, uma função pura — a `Escola` em si continua um valor mínimo
-(id + localização), sem saber quem se candidatou a ela. É o mesmo desenho que
-`modelos.Programa`/`ProgramaAlocado` já usa no motor principal: o valor fica
-pequeno e reutilizável, e quem cruza valor + candidatos é uma função separada.
-`posicao_na_fila(crianca_id, escola_classificada)` funciona igual à função
-homônima em `fila.py`, só que sobre este ranking em vez do `Score` da régua.
-Ainda sem noção de vaga/capacidade nesta linha — por isso um único
-`candidatos`, sem a divisão admitidos/fila que `ProgramaAlocado` tem.
+Ranquear por `Programa` (não por escola inteira) também é mais correto: vagas
+são por grupamento/turno, não por prédio — a mesma unidade tem fila separada
+para Berçário Integral e Maternal II Parcial. `Programa.localizacao` é o único
+campo que só esta linha usa — o motor da régua nunca olha para ele.
 
-**Empate é resolvido por sorteio.** `classificar_escola(..., semente=42)` —
+`Candidato.localizacoes` e `Programa.localizacao` são opcionais (`None` por
+padrão — "sem dado geocodificado"); o candidato tem duas `Localizacao` quando
+disponíveis (usa-se a mais próxima do programa), o programa tem uma.
+`menor_distancia_km` levanta erro claro se chamado com um candidato ou
+programa sem localização, em vez de inventar uma distância. Distância é
+haversine em linha reta ([localizacao.py](localizacao.py)), não rota real.
+Pesos e `alcance_km` são parâmetros com default, não um contrato fixo — ainda
+não decidimos se isso substitui a régua da SME, entra como critério paralelo,
+ou se junta ao `Score` que o Deferred Acceptance consome. Isso é a próxima
+decisão, via o "contrato externo" mencionado.
+
+**Cada programa tem sua própria classificação.** `ProgramaClassificado` = um
+`Programa` + os candidatos que o listaram, já ordenados pelo `calcular_score`
+acima (melhor primeiro). É montada por `classificar_programa(programa,
+candidatos)`, uma função pura — o `Programa` em si continua um valor pequeno
+(id + localização + vagas), sem saber quem se candidatou a ele. É o mesmo
+desenho que `modelos.Programa`/`ProgramaAlocado` já usa no motor da régua: o
+valor fica pequeno e reutilizável, e quem cruza valor + candidatos é uma
+função separada. `posicao_na_fila(crianca_id, programa_classificado)` funciona
+igual à função homônima em `fila.py`, só que sobre este ranking em vez do
+`Score` da régua.
+
+**Empate é resolvido por sorteio.** `classificar_programa(..., semente=42)` —
 com `semente`, o sorteio é reproduzível (mesma lista + mesma semente = mesma
 ordem, testável); sem ela, cada chamada pode sortear uma ordem diferente entre
 os empatados — deixa de ser determinística de propósito. O sorteio só decide
 *entre* empatados: quem tem score maior sempre fica na frente, qualquer que
 seja a semente.
 
-**`adicionar_candidato(escola_classificada, candidato)` coloca UM candidato na
-lista já existente**, na posição que o score dele determina. Por baixo, refaz
-o ranking inteiro (chama `classificar_escola` de novo com a lista + o novo
-candidato) em vez de calcular a posição e inserir direto — porque não guardamos
-o sorteio de empate de quem já estava na lista, então se o novo candidato
-empatar com alguém, a única forma correta de decidir é resortear o grupo
-empatado. No tamanho de uma escola isso é barato. Falha se a criança já estiver
-na classificação.
+**`adicionar_candidato(programa_classificado, candidato)` coloca UM candidato
+na lista já existente**, na posição que o score dele determina. Por baixo,
+refaz o ranking inteiro (chama `classificar_programa` de novo com a lista + o
+novo candidato) em vez de calcular a posição e inserir direto — porque não
+guardamos o sorteio de empate de quem já estava na lista, então se o novo
+candidato empatar com alguém, a única forma correta de decidir é resortear o
+grupo empatado. No tamanho de um programa isso é barato. Falha se a criança já
+estiver na classificação.
 
-**`remover_candidato(escola_classificada, crianca_id)` tira uma criança da
+**`remover_candidato(programa_classificado, crianca_id)` tira uma criança da
 lista** (desistência, saída do processo) — inverso de `adicionar_candidato`.
 Diferente de adicionar, remover não precisa resortear nada: a ordem relativa
 de quem fica não muda quando alguém sai, então é só um filtro. Falha
 (`KeyError`) se a criança não estiver na classificação.
 
 **Cuidado ao escrever teste contra este ranking: empate é fácil de criar por
-acidente.** `Candidato({})` sem localização customizada empata com qualquer
-outro `Candidato({})` (mesma vulnerabilidade zero, mesma distância zero) — o
-sorteio decide a ordem, então uma asserção de lista exata (`== ["a", "b"]`)
-fica flaky se os scores não forem distintos. Isso já aconteceu três vezes nos
-testes deste módulo; a correção sempre foi a mesma: dar aos candidatos scores
-inequívocos (flags ou distância diferentes) quando o teste depende da ordem.
+acidente.** `Candidato(crianca_id, score=Score(total=0))` sem flags nem
+distância customizada empata com qualquer outro candidato igual (mesma
+vulnerabilidade zero, mesma distância zero) — o sorteio decide a ordem, então
+uma asserção de lista exata (`== ["a", "b"]`) fica flaky se os scores não
+forem distintos. Isso já aconteceu várias vezes nos testes deste módulo; a
+correção sempre foi a mesma: dar aos candidatos scores inequívocos (flags ou
+distância diferentes) quando o teste depende da ordem.
 
-**`Escola` agora tem `vagas` (default 0 — "não informei" nunca significa
-"ilimitado").** `EscolaClassificada` guarda o score de cada candidato em
-`scores` (não só a ordem), porque `nota_corte_atual` precisa do número exato
-usado na classificação — recalcular com pesos diferentes por engano faria o
-corte mentir. A partir de `escola.vagas`, `EscolaClassificada` expõe
+**`Programa.vagas` tem default 0** ("não informei" nunca significa
+"ilimitado") — mesma convenção que `Escola` tinha antes de unificar.
+`ProgramaClassificado` guarda o score de cada candidato em `scores` (não só a
+ordem), porque `nota_corte_atual` precisa do número exato usado na
+classificação — recalcular com pesos diferentes por engano faria o corte
+mentir. A partir de `programa.vagas`, `ProgramaClassificado` expõe
 `admitidos`/`fila`/`vagas_ocupadas`/`vagas_livres`/`lotado`, e
-`nota_corte_atual(escola_classificada)` é o menor score entre os admitidos —
+`nota_corte_atual(programa_classificado)` é o menor score entre os admitidos —
 mesmas ressalvas do `nota_corte_atual` da régua oficial (`None` sem admitido;
-não é barreira real se `vagas_livres > 0`). `classificar_escola` também passou
-a rejeitar `crianca_id` duplicado, mesma regra do `deferred_acceptance`.
+não é barreira real se `vagas_livres > 0`). `classificar_programa` também
+passou a rejeitar `crianca_id` duplicado, mesma regra do
+`deferred_acceptance`.
 
 Ainda falta nesta linha: um `reclassificar` equivalente (o que acontece quando
 uma vaga muda de mão) e a ponte com dado real (geocoding CEP/bairro → lat/lon).

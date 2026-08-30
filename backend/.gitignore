@@ -4,3 +4,8 @@ __pycache__/
 .pytest_cache/
 *.db
 .env
+
+# vindos do zip do motor (match carioca) — mantidos, exceto data/*.parquet:
+# os dois parquets agregados e anonimizados SÃO commitados de propósito, para
+# que qualquer pessoa do time rode o motor sem reprocessar a base inteira.
+dadoscreche/
