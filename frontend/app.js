@@ -548,3 +548,83 @@ App.initClassificacao = function () {
 
   carregar();
 };
+
+/* ============================================================
+   TELA 4 — Status da matrícula
+   ============================================================ */
+
+App.initStatus = function () {
+  const root = App.qs("#conteudo-status");
+  const criancaId = App.getCriancaId();
+
+  if (!criancaId) {
+    root.innerHTML = App.erroHtml("Não encontramos sua inscrição. Comece pela tela de inscrição.");
+    return;
+  }
+
+  function renderSelecionado(dados) {
+    root.innerHTML = `
+      <div class="card" style="text-align:center;background:var(--success-bg);border-color:var(--success);">
+        <p style="font-size:32px;margin-bottom:6px;" aria-hidden="true">🎉</p>
+        <p class="section-title" style="font-size:19px;color:var(--success);">Parabéns! Sua criança foi selecionada.</p>
+        <p class="page-lede" style="margin:10px 0 0;color:var(--ink-900);">
+          Dirija-se à <b>${dados.unidade}</b> até <b>${App.formatDatePt(dados.prazo_matricula)}</b> para matricular presencialmente.
+        </p>
+      </div>
+      <div style="margin-top:14px;">
+        ${App.bannerHtml("info", "Leve documento de identidade do responsável e da criança, e comprovante de residência. Confira a lista completa na própria unidade.")}
+      </div>
+    `;
+  }
+
+  function renderAguardando(resumo) {
+    root.innerHTML = `
+      <div class="card" style="text-align:center;">
+        <p style="font-size:28px;margin-bottom:6px;" aria-hidden="true">⏳</p>
+        <p class="section-title" style="font-size:18px;">Ainda aguardando</p>
+        <p class="page-lede" style="margin:8px 0 0;">Sua criança ainda não foi chamada para matrícula. Assim que houver uma vaga dentro da chamada, avisaremos aqui.</p>
+      </div>
+      ${resumo ? `
+      <div class="card" style="margin-top:12px;">
+        <p class="small-caps">${resumo.programa.nome_unidade}</p>
+        <div class="position-hero">
+          <div class="num" style="font-size:34px;">${App.ordinal(resumo.posicao)}</div>
+          <p class="of">posição de ${resumo.total_fila} na fila</p>
+        </div>
+      </div>` : ""}
+      <div style="margin-top:16px;text-align:center;">
+        <button type="button" id="btn-ver-fila" class="link-btn">Ver minha posição completa na fila →</button>
+      </div>
+    `;
+    const btn = App.qs("#btn-ver-fila");
+    if (btn) btn.addEventListener("click", () => App.goTo("classificacao.html"));
+  }
+
+  async function carregar() {
+    root.innerHTML = App.loadingHtml("Verificando o status da matrícula...");
+    try {
+      const status = await Api.buscarStatusMatricula(criancaId);
+
+      if (status.status === "selecionado" || status.status === "matriculado") {
+        renderSelecionado(status);
+        return;
+      }
+
+      // aguardando: tenta enriquecer com a melhor posição atual (não obrigatório pelo contrato)
+      let resumo = null;
+      try {
+        const classificacao = await Api.buscarClassificacao(criancaId);
+        if (classificacao.classificacoes && classificacao.classificacoes.length > 0) {
+          resumo = classificacao.classificacoes.slice().sort((a, b) => a.posicao - b.posicao)[0];
+        }
+      } catch (_) { /* sem resumo, tudo bem — a tela ainda funciona */ }
+
+      renderAguardando(resumo);
+    } catch (err) {
+      root.innerHTML = App.erroHtml(App.mensagemErroAmigavel(err), true);
+      App.qs('[data-acao="retentar"]').addEventListener("click", carregar);
+    }
+  }
+
+  carregar();
+};
