@@ -457,15 +457,25 @@ App.initClassificacao = function () {
   function cardClassificacao(item, idx) {
     const dias = App.diasRestantes(item.pode_trocar_ate);
     const podeTrocar = dias > 0;
-    const vagas = item.capacidade != null ? item.capacidade : item.total_fila;
+    // Posição e capacidade são grandezas diferentes e não podem aparecer na
+    // mesma frase: "lugar 6 de 20" com 20 = capacidade dava a entender que a
+    // fila tem 20 pessoas. Agora a posição fica sozinha e demanda/vagas vêm
+    // rotuladas, cada número com seu nome.
+    const vagas = item.capacidade;
+    const fila = item.total_fila;
+    const contexto = [
+      fila != null ? `<b>${fila}</b> ${fila === 1 ? "família na fila" : "famílias na fila"}` : null,
+      vagas != null ? `<b>${vagas}</b> ${vagas === 1 ? "vaga" : "vagas"}` : null,
+    ].filter(Boolean).join(" · ");
+
     return `
       <div class="card">
         <p class="small-caps">${item.programa.nome_unidade} · ${item.programa.grupamento} · ${item.programa.turno}</p>
         <div class="position-hero">
           <div class="num">${App.ordinal(item.posicao)}</div>
-          <p class="of">Você está no lugar ${item.posicao} de ${vagas}</p>
+          <p class="of">sua posição na fila</p>
         </div>
-        ${item.total_fila != null ? `<p class="section-sub" style="text-align:center;margin-top:-6px;">${item.total_fila} famílias concorrendo a ${vagas} vagas</p>` : ""}
+        ${contexto ? `<p class="section-sub" style="text-align:center;margin-top:-6px;">${contexto}</p>` : ""}
         <div style="display:flex;justify-content:center;margin:10px 0 14px;">${badgeStatus(item.status)}</div>
         <div style="text-align:center;">
           ${podeTrocar
@@ -478,7 +488,7 @@ App.initClassificacao = function () {
 
   function previewHtml(resultado) {
     return `
-      ${App.bannerHtml("info", `Nessa unidade, hoje você entraria na posição <b>${resultado.posicao}</b> de <b>${resultado.capacidade}</b> vagas.`)}
+      ${App.bannerHtml("info", `Nessa unidade, hoje você entraria na <b>posição ${resultado.posicao}</b> da fila. A unidade tem <b>${resultado.capacidade}</b> ${resultado.capacidade === 1 ? "vaga" : "vagas"}.`)}
       <button type="button" class="btn btn-primary btn-sm btn-block" style="margin-top:8px;" data-acao="adicionar-lista">Adicionar essa unidade à lista</button>
     `;
   }
