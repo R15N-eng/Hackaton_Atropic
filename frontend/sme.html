@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel de classificação — Match Carioca</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="motor.css">
+<style>
+  /* painel SME: hierarquia compacta, sem card de landing page */
+  .grade-programa { display: grid; grid-template-columns: minmax(0,1fr) 280px; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .grade-programa { grid-template-columns: 1fr; } }
+
+  .ficha { background: var(--branco); border: 1px solid var(--borda); border-radius: var(--r-m); overflow: hidden; }
+  .ficha-cabeca { background: var(--navy); color: #fff; padding: 13px 16px; }
+  .ficha-cabeca .cod { font-family: var(--mono); font-size: 12px; color: var(--ciano-claro); }
+  .ficha-cabeca .nome { font-family: var(--titulo); font-weight: 700; font-size: 15.5px; line-height: 1.3; margin-top: 2px; }
+  .ficha-cabeca .turma { font-size: 12.5px; color: rgba(255,255,255,0.75); margin-top: 2px; }
+  .ficha-linhas { padding: 4px 0; }
+  .ficha-linha {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 9px 16px; border-bottom: 1px solid #eef1f4; font-size: 13px;
+  }
+  .ficha-linha:last-child { border-bottom: none; }
+  .ficha-linha .rot { color: var(--ink-2); }
+  .ficha-linha .val { font-family: var(--mono); font-weight: 600; font-size: 15px; color: var(--navy); }
+  .ficha-linha.forte { background: #f2f8fc; }
+  .ficha-linha.forte .val { font-size: 19px; }
+
+  .barra-ocupacao { height: 6px; background: #e3e8ec; border-radius: 3px; overflow: hidden; margin-top: 7px; }
+  .barra-ocupacao span { display: block; height: 100%; background: var(--navy); }
+
+  .cascata { position: relative; padding-left: 22px; }
+  .cascata::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--borda); }
+  .passo { position: relative; padding: 10px 0; }
+  .passo::before {
+    content: ""; position: absolute; left: -19px; top: 16px; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--ciano); border: 2px solid var(--branco);
+  }
+  .passo .quem { font-family: var(--mono); font-weight: 600; font-size: 13.5px; color: var(--navy); }
+  .passo .mov { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+  .passo .mov .seta { color: var(--ciano); font-weight: 700; }
+  .passo.ganhou .mov { color: var(--ok); font-weight: 600; }
+
+  .timeline .evento {
+    display: grid; grid-template-columns: 118px 1fr auto; gap: 14px; align-items: start;
+    padding: 12px 0; border-bottom: 1px solid #eef1f4; font-size: 13px;
+  }
+  .timeline .evento:last-child { border-bottom: none; }
+  .timeline .quando { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+  .timeline .texto { color: var(--ink-2); line-height: 1.5; }
+  .timeline .texto .aluno { font-family: var(--mono); font-weight: 600; color: var(--navy); }
+  @media (max-width: 640px) { .timeline .evento { grid-template-columns: 1fr; } }
+
+  .conf { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+    font-family: var(--titulo); letter-spacing: 0.02em; }
+  .conf-confirmado { background: var(--ok-bg); color: var(--ok); }
+  .conf-aguardando { background: var(--espera-bg); color: var(--espera); }
+  .conf-expirado { background: var(--alerta-bg); color: var(--alerta); }
+</style>
+</head>
+<body>
+
+<div class="barra-topo">
+  <div class="interno">
+    <span class="orgao"><b>Prefeitura do Rio</b> · Secretaria Municipal de Educação</span>
+    <span>Protótipo — Claude Impact Lab 2026</span>
+  </div>
+</div>
+
+<header class="cabecalho">
+  <div class="interno">
+    <div class="marca">
+      <span class="match">Match</span><span class="carioca">Carioca</span>
+      <span class="selo">Painel SME / CRE</span>
+    </div>
+    <nav class="perfis" aria-label="Perfil de acesso">
+      <a href="familia.html">Família</a>
+      <a href="sme.html" aria-current="page">SME / CRE</a>
+    </nav>
+  </div>
+</header>
+
+<main class="conteudo">
+  <div class="faixa-titulo">
+    <span class="barra" aria-hidden="true"></span>
+    <div>
+      <h1 class="pagina">Classificação e alocação de vagas</h1>
+      <p class="subtitulo">Alocação por criança via Deferred Acceptance sobre o processo de 2025.
+        Determinístico e auditável — mesma entrada, mesma saída.</p>
+    </div>
+  </div>
+
+  <div id="metricas-topo"></div>
+
+  <div class="abas" role="tablist">
+    <button class="aba" role="tab" aria-selected="true" data-painel="p-classificacao">Classificação dinâmica</button>
+    <button class="aba" role="tab" aria-selected="false" data-painel="p-reclassificacao">Reclassificação</button>
+    <button class="aba" role="tab" aria-selected="false" data-painel="p-notificacoes">Notificações</button>
+  </div>
+
+  <!-- ================= CLASSIFICAÇÃO ================= -->
+  <section id="p-classificacao" role="tabpanel">
+    <div class="cartao cartao-cinza" style="margin-bottom:16px;">
+      <div class="linha-form">
+        <div class="campo">
+          <label for="sel-programa">Programa (unidade × grupamento × turno)</label>
+          <select class="entrada" id="sel-programa"><option value="">Carregando…</option></select>
+        </div>
+        <div class="campo" style="flex:0 0 auto;">
+          <label for="busca-programa">Filtrar</label>
+          <input class="entrada" id="busca-programa" placeholder="código ou nome" style="min-width:180px;">
+        </div>
+      </div>
+    </div>
+    <div id="detalhe-programa"></div>
+  </section>
+
+  <!-- ================= RECLASSIFICAÇÃO ================= -->
+  <section id="p-reclassificacao" role="tabpanel" class="oculto">
+    <div class="aviso aviso-info" style="margin-bottom:16px;">
+      <span aria-hidden="true">i</span>
+      <span>Simulação de vaga liberada: remove uma criança alocada (como se a família
+      não tivesse confirmado), roda o Deferred Acceptance novamente e mostra o
+      <b>diff</b> entre a alocação anterior e a nova. <b>Não altera o estado base</b> —
+      pode rodar quantas vezes quiser.</span>
+    </div>
+    <div class="cartao cartao-cinza" style="margin-bottom:16px;">
+      <div class="linha-form">
+        <div class="campo">
+          <label for="sel-recl-crianca">Criança alocada que não confirmou</label>
+          <select class="entrada" id="sel-recl-crianca"><option value="">Carregando…</option></select>
+        </div>
+        <button class="botao botao-ciano" id="btn-reclassificar">Simular vaga liberada</button>
+      </div>
+      <p class="secao-nota" style="margin-top:9px;">
+        Programa de referência: <span class="mono" id="rotulo-prog-recl">—</span>
+      </p>
+    </div>
+    <div id="resultado-reclassificacao"></div>
+  </section>
+
+  <!-- ================= NOTIFICAÇÕES ================= -->
+  <section id="p-notificacoes" role="tabpanel" class="oculto">
+    <div id="painel-notificacoes"></div>
+  </section>
+</main>
+
+<footer class="rodape">
+  <div class="interno">
+    <div class="bloco">
+      <b>Sobre os dados</b>
+      Dados anonimizados pela SME (aleatorização, generalização e supressão).
+      <span class="destaque">Os indicadores não representam a realidade</span> — ilustram
+      a dinâmica do processo de inscrição em creche de 2021 a 2025.
+    </div>
+    <div class="bloco">
+      <b>Motor</b>
+      Deferred Acceptance (Gale–Shapley), crianças propondo, com desempate por loteria
+      única reproduzível. Sem modelo treinado: a alocação é determinística e auditável.
+    </div>
+    <div class="bloco">
+      <b>Match Carioca</b>
+      Protótipo do Claude Impact Lab Rio #2, inspirado na identidade visual da Prefeitura
+      do Rio. Não é serviço oficial nem extensão do site matricula.rio.
+    </div>
+  </div>
+</footer>
+
+<script src="motor-api.js"></script>
+<script>
+(function () {
+  /* ---------------------------- abas ---------------------------- */
+  UI.qsa(".aba").forEach((aba) => {
+    aba.addEventListener("click", () => {
+      UI.qsa(".aba").forEach((a) => a.setAttribute("aria-selected", "false"));
+      aba.setAttribute("aria-selected", "true");
+      UI.qsa('[role="tabpanel"]').forEach((p) => p.classList.add("oculto"));
+      UI.qs("#" + aba.dataset.painel).classList.remove("oculto");
+      if (aba.dataset.painel === "p-notificacoes") carregarNotificacoes();
+    });
+  });
+
+  /* ------------------------- métricas topo ------------------------- */
+  async function carregarMetricas() {
+    const el = UI.qs("#metricas-topo");
+    el.innerHTML = '<div class="esqueleto"></div>';
+    try {
+      const m = await Motor.metricas();
+      el.innerHTML = `
+        <div class="metricas">
+          <div class="metrica"><div class="metrica-rotulo">Crianças no processo</div>
+            <div class="metrica-valor">${UI.num(m.total_criancas)}</div></div>
+          <div class="metrica"><div class="metrica-rotulo">Programas</div>
+            <div class="metrica-valor">${UI.num(m.total_programas)}</div>
+            <div class="metrica-nota">unidade × turma × turno</div></div>
+          <div class="metrica"><div class="metrica-rotulo">Colocadas</div>
+            <div class="metrica-valor">${UI.num(m.criancas_colocadas)}</div>
+            <div class="metrica-nota">de ${UI.num(m.capacidade_total)} vagas</div></div>
+          <div class="metrica"><div class="metrica-rotulo">Na 1ª opção</div>
+            <div class="metrica-valor">${UI.num(m.pct_primeira_opcao, 1)}%</div>
+            <div class="metrica-nota">pref. média ${UI.num(m.preferencia_media, 2)}</div></div>
+          <div class="metrica"><div class="metrica-rotulo">Vulneráveis atendidas</div>
+            <div class="metrica-valor">${UI.num(m.pct_vulneraveis_colocadas, 1)}%</div>
+            <div class="metrica-nota">CadÚnico (≥51 pts)</div></div>
+          <div class="metrica"><div class="metrica-rotulo">Demais atendidas</div>
+            <div class="metrica-valor">${UI.num(m.pct_nao_vulneraveis_colocadas, 1)}%</div></div>
+        </div>
+        <p class="secao-nota" style="margin-top:8px;">
+          Loteria de desempate: <span class="mono">${m.semente}</span> · até
+          <span class="mono">${m.max_opcoes}</span> opções por criança. A capacidade é
+          proxy — são confirmações observadas em 2025, não vagas ofertadas.
+        </p>`;
+    } catch (err) {
+      el.innerHTML = UI.erro(UI.mensagemErro(err));
+      const b = UI.qs('[data-acao="retentar"]', el);
+      if (b) b.addEventListener("click", carregarMetricas);
+    }
+  }
+
+  /* ---------------------- classificação ---------------------- */
+  const selProg = UI.qs("#sel-programa");
+  const elDetalhe = UI.qs("#detalhe-programa");
+  let programasCache = [];
+
+  async function carregarProgramas(busca = "") {
+    selProg.innerHTML = '<option value="">Carregando…</option>';
+    try {
+      programasCache = await Motor.programas(busca, 300);
+
+      // Sem filtro, garante que o programa de referência da demo esteja na
+      // lista: ele não cai nos primeiros 300 do catálogo (são 2.184), e é o
+      // caso mais eloquente — 6 vagas, 343 na fila, corte 59.
+      if (!busca && !programasCache.some((p) => p.programa === UI.PROGRAMA_DEMO)) {
+        try {
+          const extra = await Motor.programas(UI.codigoDe(UI.PROGRAMA_DEMO), 20);
+          const demo = extra.find((p) => p.programa === UI.PROGRAMA_DEMO);
+          if (demo) programasCache.unshift(demo);
+        } catch (_) { /* segue sem o destaque, não é bloqueante */ }
+      }
+
+      if (!programasCache.length) {
+        selProg.innerHTML = '<option value="">Nenhum programa encontrado</option>';
+        elDetalhe.innerHTML = UI.vazio("Nenhum programa encontrado",
+          "Ajuste o filtro para localizar uma unidade.");
+        return;
+      }
+      // o programa da demo primeiro, quando estiver no resultado
+      programasCache.sort((a, b) =>
+        (b.programa === UI.PROGRAMA_DEMO) - (a.programa === UI.PROGRAMA_DEMO));
+      selProg.innerHTML = programasCache.map((p) => {
+        const nome = p.unidade_nome ? ` — ${p.unidade_nome}` : "";
+        const corte = p.nota_de_corte_atual === null ? "sem corte" : `corte ${p.nota_de_corte_atual}`;
+        return `<option value="${p.programa}">${p.programa}${nome} · ${corte} · fila ${p.total_lista_de_espera}</option>`;
+      }).join("");
+      const alvo = programasCache.some((p) => p.programa === UI.PROGRAMA_DEMO)
+        ? UI.PROGRAMA_DEMO : programasCache[0].programa;
+      selProg.value = alvo;
+      carregarDetalhe(alvo);
+    } catch (err) {
+      selProg.innerHTML = '<option value="">Falha ao carregar</option>';
+      elDetalhe.innerHTML = UI.erro(UI.mensagemErro(err));
+      const b = UI.qs('[data-acao="retentar"]', elDetalhe);
+      if (b) b.addEventListener("click", () => carregarProgramas(busca));
+    }
+  }
+
+  async function carregarDetalhe(programa) {
+    elDetalhe.innerHTML = '<div class="esqueleto" style="height:240px;"></div>';
+    try {
+      const p = await Motor.programa(programa, 40);
+      const pctOcup = p.capacidade ? Math.min(100, Math.round(100 * p.ocupadas / p.capacidade)) : 0;
+      const corte = p.nota_de_corte_atual === null ? "—" : p.nota_de_corte_atual;
+      const disputa = p.capacidade ? (p.demanda_criancas / p.capacidade) : null;
+
+      elDetalhe.innerHTML = `
+        <div class="grade-programa">
+          <div>
+            <div class="secao-cabeca">
+              <h2 class="secao-titulo">Lista de espera</h2>
+              <span class="secao-nota">${UI.num(p.total_lista_de_espera)} na fila ·
+                ordenada por pontuação, depois pela loteria única</span>
+            </div>
+            ${p.lista_de_espera.length === 0
+              ? UI.vazio("Fila vazia", "Nenhuma criança aguarda vaga neste programa.")
+              : `<div class="rolagem"><table class="dados">
+                  <thead><tr>
+                    <th class="dir">Pos.</th><th>Identificador</th>
+                    <th class="dir">Pontuação</th><th>Critério</th>
+                  </tr></thead>
+                  <tbody>${p.lista_de_espera.map((c) => `
+                    <tr>
+                      <td class="dir num posicao-forte">${c.posicao}</td>
+                      <td class="num">${c.aluno_anon}</td>
+                      <td class="dir num">${c.score}</td>
+                      <td>${c.cadunico ? '<span class="marca-cadunico">CADÚNICO</span>' : '<span style="color:var(--ink-3);font-size:12px;">—</span>'}</td>
+                    </tr>`).join("")}</tbody>
+                </table></div>
+                ${p.total_lista_de_espera > p.lista_de_espera.length
+                  ? `<p class="secao-nota" style="margin-top:8px;">Mostrando as
+                     ${p.lista_de_espera.length} primeiras de ${UI.num(p.total_lista_de_espera)}.</p>` : ""}`}
+          </div>
+
+          <div class="ficha">
+            <div class="ficha-cabeca">
+              <div class="cod">${p.esc_codigo}</div>
+              <div class="nome">${UI.nomeOuCodigo(p.unidade_nome, p.esc_codigo)}</div>
+              <div class="turma">${p.grupamento} · ${p.turno}${p.bairro_unidade ? " · " + p.bairro_unidade : ""}${p.CRE ? " · CRE " + p.CRE : ""}</div>
+            </div>
+            <div class="ficha-linhas">
+              <div class="ficha-linha forte">
+                <span class="rot">Nota de corte atual</span><span class="val">${corte}</span>
+              </div>
+              <div class="ficha-linha">
+                <span class="rot">Capacidade</span><span class="val">${UI.num(p.capacidade)}</span>
+              </div>
+              <div class="ficha-linha">
+                <span class="rot">Ocupadas</span><span class="val">${UI.num(p.ocupadas)}</span>
+              </div>
+              <div class="ficha-linha" style="display:block;">
+                <span class="rot">Ocupação</span>
+                <div class="barra-ocupacao"><span style="width:${pctOcup}%"></span></div>
+                <span class="secao-nota">${pctOcup}% da capacidade</span>
+              </div>
+              <div class="ficha-linha">
+                <span class="rot">Demanda (crianças)</span><span class="val">${UI.num(p.demanda_criancas)}</span>
+              </div>
+              <div class="ficha-linha">
+                <span class="rot">Na lista de espera</span><span class="val">${UI.num(p.total_lista_de_espera)}</span>
+              </div>
+              ${disputa ? `<div class="ficha-linha">
+                <span class="rot">Disputa por vaga</span>
+                <span class="val">${UI.num(disputa, 1)}×</span></div>` : ""}
+            </div>
+          </div>
+        </div>`;
+      atualizarSeletorReclassificacao(p);
+    } catch (err) {
+      elDetalhe.innerHTML = UI.erro(UI.mensagemErro(err));
+      const b = UI.qs('[data-acao="retentar"]', elDetalhe);
+      if (b) b.addEventListener("click", () => carregarDetalhe(programa));
+    }
+  }
+
+  selProg.addEventListener("change", () => carregarDetalhe(selProg.value));
+  let t;
+  UI.qs("#busca-programa").addEventListener("input", (e) => {
+    clearTimeout(t);
+    t = setTimeout(() => carregarProgramas(e.target.value.trim()), 350);
+  });
+
+  /* ---------------------- reclassificação ---------------------- */
+  const selRecl = UI.qs("#sel-recl-crianca");
+  const elRecl = UI.qs("#resultado-reclassificacao");
+  let programaRefRecl = null;
+
+  function atualizarSeletorReclassificacao(p) {
+    // Candidatas a "não confirmar" = quem ocupa vaga NESTE programa. Vem de
+    // `alocadas` no próprio objeto do programa, ordenado por pontuação
+    // crescente — sair da última posição é o cenário que gera cascata visível.
+    programaRefRecl = p.programa;
+    UI.qs("#rotulo-prog-recl").textContent =
+      `${p.programa} · ${UI.nomeOuCodigo(p.unidade_nome, p.esc_codigo)}`;
+
+    const alocadas = p.alocadas || [];
+    if (!alocadas.length) {
+      selRecl.innerHTML = '<option value="">Nenhuma criança alocada neste programa</option>';
+      return;
+    }
+    selRecl.innerHTML = alocadas.map((c) =>
+      `<option value="${c.aluno_anon}">${c.aluno_anon} — ${c.score} pts — ${c.pref_atendida}ª opção</option>`
+    ).join("");
+  }
+
+  UI.qs("#btn-reclassificar").addEventListener("click", async () => {
+    const aluno = selRecl.value;
+    if (!aluno) {
+      elRecl.innerHTML = UI.vazio("Escolha uma criança", "Selecione quem não confirmou a vaga.");
+      return;
+    }
+    const btn = UI.qs("#btn-reclassificar");
+    btn.disabled = true; btn.textContent = "Rodando o motor…";
+    elRecl.innerHTML = UI.carregando("Rodando o Deferred Acceptance novamente…");
+    try {
+      const r = await Motor.reclassificar(aluno);
+      elRecl.innerHTML = `
+        <div class="metricas" style="margin-bottom:16px;">
+          <div class="metrica"><div class="metrica-rotulo">Vaga liberada em</div>
+            <div class="metrica-valor" style="font-size:14px;">${r.programa_liberado || "—"}</div></div>
+          <div class="metrica"><div class="metrica-rotulo">Movimentos em cadeia</div>
+            <div class="metrica-valor">${UI.num(r.total_movimentos)}</div></div>
+          <div class="metrica"><div class="metrica-rotulo">Alocadas antes</div>
+            <div class="metrica-valor">${UI.num(r.alocadas_antes)}</div></div>
+          <div class="metrica"><div class="metrica-rotulo">Alocadas depois</div>
+            <div class="metrica-valor">${UI.num(r.alocadas_depois)}</div></div>
+        </div>
+
+        <div class="secao-cabeca">
+          <h2 class="secao-titulo">Quem subiu</h2>
+          <span class="secao-nota">gerado em ${UI.dataHora(r.gerado_em)}</span>
+        </div>
+
+        ${r.movimentos.length === 0
+          ? UI.vazio("Nenhum movimento", "A saída desta criança não liberou vaga para ninguém na fila.")
+          : `<div class="cartao"><div class="cascata">
+              ${r.movimentos.map((m) => `
+                <div class="passo ${m.de === null ? "ganhou" : ""}">
+                  <div class="quem">${m.aluno_anon} · ${m.score} pts
+                    ${m.cadunico ? '<span class="marca-cadunico">CADÚNICO</span>' : ""}</div>
+                  <div class="mov">
+                    ${m.de === null
+                      ? `estava <b>sem vaga</b> <span class="seta">→</span> alocada em <span class="mono">${m.para}</span>`
+                      : `<span class="mono">${m.de}</span> <span class="seta">→</span> <span class="mono">${m.para}</span>${m.de_posicao ? ` · era ${m.de_posicao}º na fila` : ""}`}
+                  </div>
+                </div>`).join("")}
+            </div></div>`}
+
+        ${r.perderam_vaga.length
+          ? `<div class="aviso aviso-erro" style="margin-top:14px;">
+              <span aria-hidden="true">!</span>
+              <span><b>${r.perderam_vaga.length} criança(s) perderam vaga</b> nesta
+              reclassificação: <span class="mono">${r.perderam_vaga.slice(0, 5).join(", ")}</span></span>
+            </div>`
+          : `<div class="aviso aviso-info" style="margin-top:14px;">
+              <span aria-hidden="true">i</span>
+              <span>Nenhuma criança perdeu vaga — a reclassificação só melhorou
+              posições. É a garantia de estabilidade do Deferred Acceptance.</span>
+            </div>`}`;
+    } catch (err) {
+      elRecl.innerHTML = UI.erro(UI.mensagemErro(err));
+      const b = UI.qs('[data-acao="retentar"]', elRecl);
+      if (b) b.addEventListener("click", () => UI.qs("#btn-reclassificar").click());
+    } finally {
+      btn.disabled = false; btn.textContent = "Simular vaga liberada";
+    }
+  });
+
+  /* ---------------------- notificações ---------------------- */
+  let notifCarregadas = false;
+  async function carregarNotificacoes(forcar) {
+    if (notifCarregadas && !forcar) return;
+    const el = UI.qs("#painel-notificacoes");
+    el.innerHTML = UI.carregando("Carregando timeline…");
+    try {
+      const d = await Motor.notificacoes(20);
+      notifCarregadas = true;
+      el.innerHTML = `
+        ${d.mock ? `<div class="aviso aviso-mock" style="margin-bottom:16px;">
+          <span class="selo-status selo-mock">DADOS SIMULADOS</span>
+          <span>${d.aviso}</span></div>` : ""}
+        <div class="secao-cabeca">
+          <h2 class="secao-titulo">Envios por WhatsApp</h2>
+          <span class="secao-nota">${UI.num(d.total)} eventos · mais recentes primeiro</span>
+        </div>
+        ${d.eventos.length === 0
+          ? UI.vazio("Nenhum envio registrado", "Quando as convocações forem disparadas, aparecem aqui.")
+          : `<div class="cartao"><div class="timeline">
+              ${d.eventos.map((e) => `
+                <div class="evento">
+                  <div class="quando">${UI.dataHora(e.enviado_em)}</div>
+                  <div class="texto">
+                    <span class="aluno">${e.aluno_anon}</span> ·
+                    ${UI.nomeOuCodigo(e.unidade_nome, UI.codigoDe(e.programa))}
+                    <div style="color:var(--ink-3);font-size:12px;margin-top:3px;">${e.texto}</div>
+                  </div>
+                  <span class="conf conf-${e.status_confirmacao}">${e.status_confirmacao}</span>
+                </div>`).join("")}
+            </div></div>`}`;
+    } catch (err) {
+      el.innerHTML = UI.erro(UI.mensagemErro(err));
+      const b = UI.qs('[data-acao="retentar"]', el);
+      if (b) b.addEventListener("click", () => carregarNotificacoes(true));
+    }
+  }
+
+  /* ---------------------- início ---------------------- */
+  carregarMetricas();
+  carregarProgramas();
+  elRecl.innerHTML = UI.vazio("Nenhuma simulação rodada",
+    "Escolha uma criança alocada e clique em “Simular vaga liberada”.");
+})();
+</script>
+</body>
+</html>
