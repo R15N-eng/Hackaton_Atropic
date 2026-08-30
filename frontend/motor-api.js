@@ -7,12 +7,17 @@
    estado de erro com botão de tentar de novo — não inventam número.
    ========================================================================== */
 
+/* Base da API.
+   Local: o front é servido em :8080 e o backend em :8000, então aponta pra 8000.
+   Deploy: front no GitHub Pages e backend no Render — origens diferentes, então
+   NÃO pode cair em "mesma origem" (buscaria a API no Pages e falharia).
+   Mesmo valor usado em api.js, para os dois ficarem em sincronia. */
+const MOTOR_API_PUBLICA = "https://hackaton-atropic-api.onrender.com";
+
 const MOTOR_BASE = (() => {
-  // o front é servido em :8080 e o backend em :8000 no ambiente local;
-  // em deploy os dois ficam na mesma origem ou o valor é trocado aqui.
   const host = window.location.hostname || "127.0.0.1";
   if (host === "127.0.0.1" || host === "localhost") return `http://${host}:8000`;
-  return ""; // mesma origem
+  return MOTOR_API_PUBLICA;
 })();
 
 async function motorFetch(caminho) {
