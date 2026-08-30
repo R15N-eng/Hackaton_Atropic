@@ -48,7 +48,11 @@ UNIDADES_2025 = [
 ]
 
 
-def main() -> None:
+def seed() -> None:
+    """Idempotente: so popula se a tabela de programas estiver vazia. Chamado
+    tanto por este script quanto pelo startup da API (app/main.py), para o
+    deploy (ex: Render) subir com dados de exemplo sem precisar de acesso
+    a um shell remoto."""
     init_db()
     db = SessionLocal()
     try:
@@ -75,4 +79,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    seed()

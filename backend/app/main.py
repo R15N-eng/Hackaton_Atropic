@@ -7,6 +7,8 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from twilio.twiml.messaging_response import MessagingResponse
 
+import seed_data  # script na raiz de backend/, nao faz parte do pacote app
+
 from app import classification_engine, config, crud, models, schemas, scheduler, whatsapp
 from app.database import get_db, init_db
 
@@ -25,6 +27,7 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    seed_data.seed()  # idempotente -- sobe com dados de exemplo em deploys "do zero" (ex: Render)
     scheduler.iniciar_scheduler()
 
 
