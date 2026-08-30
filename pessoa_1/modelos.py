@@ -172,15 +172,32 @@ class Candidato:
 
 @dataclass(frozen=True)
 class Programa:
-    """Uma vaga-tipo: (ano, unidade, grupamento, horario) e sua capacidade."""
+    """Uma vaga-tipo: (ano, unidade, grupamento, horario) e sua capacidade.
+
+    Classe unica -- ate pouco atras `vulnerabilidade.py` tinha o seu proprio
+    `Escola` (identidade + localizacao + vagas), a mesma nocao de "onde a
+    vaga existe" representada de outro jeito. `localizacao` e opcional
+    (`None` por padrao, "sem geocodificacao ainda"): so
+    `vulnerabilidade.menor_distancia_km` usa esse campo -- o motor da regua
+    oficial nunca olha para ele.
+
+    `vagas` default 0 de proposito, igual ao `Escola` que unificou aqui:
+    "nao informei capacidade" deve significar "ninguem admitido ainda",
+    nunca "capacidade ilimitada".
+    """
 
     programa_id: str
-    vagas: int
+    vagas: int = 0
     ano: Optional[int] = None
     unidade: Optional[str] = None
     nome_unidade: Optional[str] = None
     grupamento: Optional[str] = None
     horario: Optional[str] = None
+    localizacao: Optional[Localizacao] = None
+
+    def __post_init__(self) -> None:
+        if self.vagas < 0:
+            raise ValueError(f"vagas nao pode ser negativo: {self.vagas!r}")
 
 
 @dataclass(frozen=True)

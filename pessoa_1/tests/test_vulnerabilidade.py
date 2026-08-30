@@ -9,7 +9,7 @@ from pessoa_1.localizacao import Localizacao, distancia_km
 from pessoa_1.modelos import Score
 from pessoa_1.vulnerabilidade import (
     Candidato,
-    Escola,
+    Programa,
     calcular_score,
     menor_distancia_km,
     pontuacao_distancia,
@@ -98,33 +98,40 @@ def test_candidato_aceita_localizacoes_none():
     assert c.localizacoes is None
 
 
-def test_menor_distancia_falha_sem_localizacoes():
+def test_menor_distancia_falha_sem_localizacoes_do_candidato():
     c = Candidato(crianca_id="c1", score=Score(total=0), localizacoes=None)
-    escola = Escola(escola_id="E1", localizacao=localizacao())
+    programa = Programa(programa_id="E1", localizacao=localizacao())
     with pytest.raises(ValueError, match="sem localizacoes"):
-        menor_distancia_km(c, escola)
+        menor_distancia_km(c, programa)
+
+
+def test_menor_distancia_falha_sem_localizacao_do_programa():
+    c = candidato()
+    programa = Programa(programa_id="E1")  # sem localizacao (default None)
+    with pytest.raises(ValueError, match="sem localizacao"):
+        menor_distancia_km(c, programa)
 
 
 # --- menor_distancia_km -----------------------------------------------------
-def test_usa_a_localizacao_mais_proxima_da_escola():
+def test_usa_a_localizacao_mais_proxima_do_programa():
     perto = localizacao(0.0, 0.0)
     longe = localizacao(10.0, 10.0)
     c = candidato(localizacoes=(longe, perto))
-    escola = Escola(escola_id="E1", localizacao=localizacao(0.0, 0.0))
-    assert menor_distancia_km(c, escola) == pytest.approx(0.0, abs=1e-6)
+    programa = Programa(programa_id="E1", localizacao=localizacao(0.0, 0.0))
+    assert menor_distancia_km(c, programa) == pytest.approx(0.0, abs=1e-6)
 
 
 def test_menor_distancia_nao_depende_da_ordem():
     a = localizacao(0.0, 0.0)
     b = localizacao(1.0, 0.0)
-    escola = Escola(escola_id="E1", localizacao=a)
+    programa = Programa(programa_id="E1", localizacao=a)
     c1 = candidato(localizacoes=(a, b))
     c2 = candidato(localizacoes=(b, a))
-    assert menor_distancia_km(c1, escola) == menor_distancia_km(c2, escola)
+    assert menor_distancia_km(c1, programa) == menor_distancia_km(c2, programa)
 
 
 # --- pontuacao_distancia (decaimento) ---------------------------------------
-def test_pontuacao_maxima_na_porta_da_escola():
+def test_pontuacao_maxima_na_porta_do_programa():
     assert pontuacao_distancia(0.0, alcance_km=5.0) == 1.0
 
 
@@ -156,45 +163,45 @@ def test_score_e_a_soma_ponderada_de_vulnerabilidade_e_proximidade():
         {"bolsa_familia": 1, "deficiencia": 1},          # vulnerabilidade = 2
         (localizacao(0.0, 0.0), localizacao(0.0, 0.0)),  # distancia = 0 -> proximidade 1.0
     )
-    escola = Escola(escola_id="E1", localizacao=localizacao(0.0, 0.0))
+    programa = Programa(programa_id="E1", localizacao=localizacao(0.0, 0.0))
 
-    score = calcular_score(c, escola, peso_vulnerabilidade=3.0, peso_distancia=10.0)
+    score = calcular_score(c, programa, peso_vulnerabilidade=3.0, peso_distancia=10.0)
 
     assert score == pytest.approx(3.0 * 2 + 10.0 * 1.0)
 
 
 def test_score_retorna_apenas_o_numero():
     c = candidato({"bolsa_familia": 1})
-    escola = Escola(escola_id="E1", localizacao=localizacao())
-    resultado = calcular_score(c, escola)
+    programa = Programa(programa_id="E1", localizacao=localizacao())
+    resultado = calcular_score(c, programa)
     assert isinstance(resultado, float)
 
 
 def test_score_usa_pesos_default_um():
     c = candidato({"bolsa_familia": 1})  # vulnerabilidade = 1
-    escola = Escola(escola_id="E1", localizacao=localizacao())  # distancia 0 -> proximidade 1
-    assert calcular_score(c, escola) == pytest.approx(2.0)
+    programa = Programa(programa_id="E1", localizacao=localizacao())  # distancia 0 -> proximidade 1
+    assert calcular_score(c, programa) == pytest.approx(2.0)
 
 
 def test_score_cai_conforme_a_distancia_aumenta():
-    escola = Escola(escola_id="E1", localizacao=localizacao(0.0, 0.0))
+    programa = Programa(programa_id="E1", localizacao=localizacao(0.0, 0.0))
     perto = candidato({}, (localizacao(0.0, 0.0), localizacao(0.0, 0.0)))
     longe = candidato({}, (localizacao(1.0, 0.0), localizacao(1.0, 0.0)))
 
-    assert calcular_score(perto, escola, alcance_km=200) > calcular_score(
-        longe, escola, alcance_km=200
+    assert calcular_score(perto, programa, alcance_km=200) > calcular_score(
+        longe, programa, alcance_km=200
     )
 
 
 def test_score_zero_quando_sem_vulnerabilidade_e_fora_do_alcance():
     c = candidato({}, (localizacao(10.0, 10.0), localizacao(10.0, 10.0)))
-    escola = Escola(escola_id="E1", localizacao=localizacao(0.0, 0.0))
-    assert calcular_score(c, escola, alcance_km=5.0) == 0.0
+    programa = Programa(programa_id="E1", localizacao=localizacao(0.0, 0.0))
+    assert calcular_score(c, programa, alcance_km=5.0) == 0.0
 
 
 def test_calcular_score_nao_muta_as_entradas():
     c = candidato({"bolsa_familia": 1})
-    escola = Escola(escola_id="E1", localizacao=localizacao())
+    programa = Programa(programa_id="E1", localizacao=localizacao())
     antes = (dict(c.score.detalhe), c.localizacoes)
-    calcular_score(c, escola)
+    calcular_score(c, programa)
     assert (dict(c.score.detalhe), c.localizacoes) == antes

@@ -3,15 +3,21 @@ regua oficial da SME (`score.py`, que usa a Query C e responde por `Score`,
 o tipo consumido pelo Deferred Acceptance).
 
 Aqui o objetivo e outro: medir modularmente vulnerabilidade (sem peso de
-regua) e distancia ate a escola, uma peca por vez, para depois decidir -- via
-um contrato externo ainda nao definido -- se/como isso se combina com o score
-oficial no ranking do Deferred Acceptance.
+regua) e distancia ate o programa, uma peca por vez, para depois decidir --
+via um contrato externo ainda nao definido -- se/como isso se combina com o
+score oficial no ranking do Deferred Acceptance.
 
-`Candidato` e o mesmo tipo usado no motor da regua (`modelos.Candidato`) --
-ate pouco atras este modulo tinha o seu proprio, com um dict de flags
-guardando a mesma informacao que `Score` ja guarda (ver `pontuacao_
-vulnerabilidade` abaixo). `Escola`, por outro lado, e proprio deste modulo:
-o motor da regua nao tem noção de localizacao geografica nem esse tipo.
+`Candidato` e `Programa` sao os mesmos tipos usados no motor da regua
+(`modelos.py`). Ate pouco atras este modulo tinha os seus proprios -- um
+`Candidato` com um dict de flags guardando a mesma informacao que `Score` ja
+guarda (ver `pontuacao_vulnerabilidade` abaixo), e um `Escola` (identidade +
+localizacao + vagas) representando a mesma nocao de "onde a vaga existe" que
+`Programa` ja representa. `Programa.localizacao` e o unico campo que so esta
+linha usa -- o motor da regua oficial nunca olha para ele.
+
+Ranquear por `Programa` (nao por escola inteira) tambem é mais correto: vagas
+sao por grupamento/turno, nao por predio -- a mesma unidade tem fila separada
+para Bercario Integral e Maternal II Parcial.
 
 `calcular_score` daqui devolve so o numero (`float`), como pedido -- sem
 detalhe, sem desempate. Pesos e alcance sao parametros com default, nao um
@@ -24,27 +30,8 @@ import random
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Optional
 
-from .localizacao import Localizacao, distancia_km
-from .modelos import Candidato  # re-exportado -- import via este modulo continua valido
-
-
-@dataclass(frozen=True)
-class Escola:
-    """A escola: identidade, localizacao e capacidade.
-
-    `vagas` default 0 de proposito -- "nao informei capacidade" deve significar
-    "ninguem admitido ainda", nunca "capacidade ilimitada". So importa para
-    `classificar_escola`/`nota_corte_atual`; quem so quer `calcular_score` pode
-    ignorar e deixar o default.
-    """
-
-    escola_id: str
-    localizacao: Localizacao
-    vagas: int = 0
-
-    def __post_init__(self) -> None:
-        if self.vagas < 0:
-            raise ValueError(f"vagas nao pode ser negativo: {self.vagas!r}")
+from .localizacao import distancia_km
+from .modelos import Candidato, Programa  # re-exportados -- imports existentes continuam validos
 
 
 def pontuacao_vulnerabilidade(candidato: Candidato) -> float:
@@ -61,27 +48,33 @@ def pontuacao_vulnerabilidade(candidato: Candidato) -> float:
     return float(len(candidato.score.detalhe) + len(candidato.score.desempates))
 
 
-def menor_distancia_km(candidato: Candidato, escola: Escola) -> float:
-    """A menor das duas distancias candidato-escola.
+def menor_distancia_km(candidato: Candidato, programa: Programa) -> float:
+    """A menor das duas distancias candidato-programa.
 
     E essa que entra na pontuacao: usamos a localizacao que favorece a
-    crianca, nao uma media -- ter um endereco mais proximo da escola conta a
+    crianca, nao uma media -- ter um endereco mais proximo do programa conta a
     favor dela.
 
-    Levanta erro se o candidato nao tiver `localizacoes` (endereco ainda nao
-    geocodificado) -- nao ha como calcular distancia sem elas, e inventar uma
-    (ex.: 0 ou infinito) esconderia o problema em vez de avisar.
+    Levanta erro se o candidato nao tiver `localizacoes`, ou o programa nao
+    tiver `localizacao` -- endereco ainda nao geocodificado dos dois lados.
+    Nao ha como calcular distancia sem eles, e inventar uma (ex.: 0 ou
+    infinito) esconderia o problema em vez de avisar.
     """
     if candidato.localizacoes is None:
         raise ValueError(
             f"{candidato.crianca_id!r} sem localizacoes -- nao e possivel "
             "calcular distancia"
         )
-    return min(distancia_km(loc, escola.localizacao) for loc in candidato.localizacoes)
+    if programa.localizacao is None:
+        raise ValueError(
+            f"{programa.programa_id!r} sem localizacao -- nao e possivel "
+            "calcular distancia"
+        )
+    return min(distancia_km(loc, programa.localizacao) for loc in candidato.localizacoes)
 
 
 def pontuacao_distancia(distancia: float, *, alcance_km: float = 5.0) -> float:
-    """Pontuacao de proximidade: 1.0 na porta da escola, cai linearmente e
+    """Pontuacao de proximidade: 1.0 na porta do programa, cai linearmente e
     satura em 0.0 a partir de `alcance_km`.
 
     E a curva mais simples que cumpre "mais perto pontua mais" sem inventar
@@ -98,14 +91,14 @@ def pontuacao_distancia(distancia: float, *, alcance_km: float = 5.0) -> float:
 
 def calcular_score(
     candidato: Candidato,
-    escola: Escola,
+    programa: Programa,
     *,
     peso_vulnerabilidade: float = 1.0,
     peso_distancia: float = 1.0,
     alcance_km: float = 5.0,
 ) -> float:
-    """Pontuacao da crianca para esta escola: soma ponderada de vulnerabilidade
-    e proximidade.
+    """Pontuacao da crianca para este programa: soma ponderada de
+    vulnerabilidade e proximidade.
 
         score = peso_vulnerabilidade * vulnerabilidade
               + peso_distancia       * pontuacao_distancia(menor_distancia)
@@ -115,44 +108,44 @@ def calcular_score(
     fixe os valores oficiais.
     """
     vulnerabilidade = pontuacao_vulnerabilidade(candidato)
-    distancia = menor_distancia_km(candidato, escola)
+    distancia = menor_distancia_km(candidato, programa)
     proximidade = pontuacao_distancia(distancia, alcance_km=alcance_km)
     return peso_vulnerabilidade * vulnerabilidade + peso_distancia * proximidade
 
 
 # ---------------------------------------------------------------------------
-# Classificacao por escola
+# Classificacao por programa
 # ---------------------------------------------------------------------------
-# Espelha modelos.Programa/ProgramaAlocado: a Escola sabe sua capacidade
-# (`vagas`), mas nao sabe quem se candidatou a ela. Quem cruza os dois e este
+# Espelha modelos.Programa/ProgramaAlocado: o Programa sabe sua capacidade
+# (`vagas`), mas nao sabe quem se candidatou a ele. Quem cruza os dois e este
 # tipo companheiro, montado por uma funcao pura -- mesmo padrao usado pelo
 # Deferred Acceptance no motor principal.
 @dataclass(frozen=True)
-class EscolaClassificada:
-    """Uma Escola e os candidatos que a listaram, ja ordenados pelo score de
+class ProgramaClassificado:
+    """Um Programa e os candidatos que o listaram, ja ordenados pelo score de
     vulnerabilidade + distancia (melhor primeiro), com o score de cada um
     guardado em `scores` (crianca_id -> score usado para ordenar).
 
     Guardar o score em vez de so a ordem evita recalcula-lo -- e faria isso
     com os pesos errados se alguem chamar `nota_corte_atual` com pesos
-    diferentes dos usados aqui. As primeiras `escola.vagas` posicoes sao
+    diferentes dos usados aqui. As primeiras `programa.vagas` posicoes sao
     `admitidos`; o resto e `fila`. Ainda nao ha o conceito de "quem aceitaria
     a vaga" que a fila do motor principal tem (isso exigiria um candidato
-    conhecer preferencias entre varias escolas, que nao existe nesta linha) --
-    aqui fila e simplesmente "listou e nao teve vaga".
+    conhecer preferencias entre varios programas, que nao existe nesta linha)
+    -- aqui fila e simplesmente "listou e nao teve vaga".
     """
 
-    escola: Escola
+    programa: Programa
     candidatos: tuple[Candidato, ...]           # TODOS que listaram, ordenados
     scores: Mapping[str, float]                 # crianca_id -> score na ordenacao
 
     @property
-    def escola_id(self) -> str:
-        return self.escola.escola_id
+    def programa_id(self) -> str:
+        return self.programa.programa_id
 
     @property
     def vagas(self) -> int:
-        return self.escola.vagas
+        return self.programa.vagas
 
     @property
     def admitidos(self) -> tuple[Candidato, ...]:
@@ -174,23 +167,24 @@ class EscolaClassificada:
     def lotado(self) -> bool:
         """True quando nao ha mais vaga livre.
 
-        Caso de borda intencional: escola com `vagas=0` e `lotado=True` mesmo
-        com `admitidos=()` -- 0 vagas ocupando 0 de capacidade e "sem vaga
-        livre", nao "com vaga livre". Mesma regra de `modelos.ProgramaAlocado`.
+        Caso de borda intencional: programa com `vagas=0` e `lotado=True`
+        mesmo com `admitidos=()` -- 0 vagas ocupando 0 de capacidade e "sem
+        vaga livre", nao "com vaga livre". Mesma regra de
+        `modelos.ProgramaAlocado`.
         """
         return self.vagas_ocupadas >= self.vagas
 
 
-def classificar_escola(
-    escola: Escola,
+def classificar_programa(
+    programa: Programa,
     candidatos: Iterable[Candidato],
     *,
     peso_vulnerabilidade: float = 1.0,
     peso_distancia: float = 1.0,
     alcance_km: float = 5.0,
     semente: Optional[int] = None,
-) -> EscolaClassificada:
-    """Ordena os candidatos que listaram `escola` pelo score de
+) -> ProgramaClassificado:
+    """Ordena os candidatos que listaram `programa` pelo score de
     vulnerabilidade + distancia -- maior score primeiro.
 
     Empate (mesmo score) e resolvido por sorteio -- esta linha de trabalho
@@ -218,7 +212,7 @@ def classificar_escola(
     scores = {
         candidato.crianca_id: calcular_score(
             candidato,
-            escola,
+            programa,
             peso_vulnerabilidade=peso_vulnerabilidade,
             peso_distancia=peso_distancia,
             alcance_km=alcance_km,
@@ -236,22 +230,22 @@ def classificar_escola(
         for candidato in candidatos
     ]
     pares.sort(key=lambda par: par[1])
-    return EscolaClassificada(
-        escola=escola,
+    return ProgramaClassificado(
+        programa=programa,
         candidatos=tuple(candidato for candidato, _ in pares),
         scores=scores,
     )
 
 
 def adicionar_candidato(
-    escola_classificada: EscolaClassificada,
+    programa_classificado: ProgramaClassificado,
     candidato: Candidato,
     *,
     peso_vulnerabilidade: float = 1.0,
     peso_distancia: float = 1.0,
     alcance_km: float = 5.0,
     semente: Optional[int] = None,
-) -> EscolaClassificada:
+) -> ProgramaClassificado:
     """Coloca um candidato na classificacao existente, na posicao que o score
     dele determina -- refaz o ranking com ele incluido.
 
@@ -260,24 +254,24 @@ def adicionar_candidato(
     guardamos o sorteio de cada candidato que ja estava na lista. Se o novo
     candidato empatar com algum deles, a unica forma correta de decidir e
     resortear o grupo empatado -- nao ha sorteio antigo para reaproveitar.
-    No tamanho tipico de uma escola (nao milhoes de candidatos), refazer o
+    No tamanho tipico de um programa (nao milhoes de candidatos), refazer o
     ranking e barato; a alternativa (achar a posicao e so inserir) economiza
     tempo mas so funciona tratando empate como caso especial, o que abre
     espaco para o mesmo tipo de bug sutil que ja vimos em `reclassificar`.
 
     Falha se `candidato.crianca_id` ja estiver na classificacao -- mesma
-    crianca nao pode aparecer duas vezes na lista de uma escola.
+    crianca nao pode aparecer duas vezes na lista de um programa.
     """
     if any(
-        c.crianca_id == candidato.crianca_id for c in escola_classificada.candidatos
+        c.crianca_id == candidato.crianca_id for c in programa_classificado.candidatos
     ):
         raise ValueError(
             f"{candidato.crianca_id!r} ja esta na classificacao de "
-            f"{escola_classificada.escola_id!r}"
+            f"{programa_classificado.programa_id!r}"
         )
-    return classificar_escola(
-        escola_classificada.escola,
-        (*escola_classificada.candidatos, candidato),
+    return classificar_programa(
+        programa_classificado.programa,
+        (*programa_classificado.candidatos, candidato),
         peso_vulnerabilidade=peso_vulnerabilidade,
         peso_distancia=peso_distancia,
         alcance_km=alcance_km,
@@ -286,8 +280,8 @@ def adicionar_candidato(
 
 
 def remover_candidato(
-    escola_classificada: EscolaClassificada, crianca_id: str
-) -> EscolaClassificada:
+    programa_classificado: ProgramaClassificado, crianca_id: str
+) -> ProgramaClassificado:
     """Tira uma crianca da classificacao (desistencia, saida do processo).
 
     Diferente de `adicionar_candidato`, remover nao precisa resortear nada: a
@@ -296,51 +290,51 @@ def remover_candidato(
     Falha se `crianca_id` nao estiver na classificacao.
     """
     restantes = tuple(
-        c for c in escola_classificada.candidatos if c.crianca_id != crianca_id
+        c for c in programa_classificado.candidatos if c.crianca_id != crianca_id
     )
-    if len(restantes) == len(escola_classificada.candidatos):
+    if len(restantes) == len(programa_classificado.candidatos):
         raise KeyError(
             f"{crianca_id!r} nao esta na classificacao de "
-            f"{escola_classificada.escola_id!r}"
+            f"{programa_classificado.programa_id!r}"
         )
     scores = {
         cid: score
-        for cid, score in escola_classificada.scores.items()
+        for cid, score in programa_classificado.scores.items()
         if cid != crianca_id
     }
-    return EscolaClassificada(
-        escola=escola_classificada.escola, candidatos=restantes, scores=scores
+    return ProgramaClassificado(
+        programa=programa_classificado.programa, candidatos=restantes, scores=scores
     )
 
 
-def nota_corte_atual(escola_classificada: EscolaClassificada) -> Optional[float]:
-    """Menor score entre os admitidos (as primeiras `escola.vagas` posicoes).
+def nota_corte_atual(programa_classificado: ProgramaClassificado) -> Optional[float]:
+    """Menor score entre os admitidos (as primeiras `programa.vagas` posicoes).
 
     None quando ninguem foi admitido -- vaga aberta, sem corte.
 
-    Cuidado ao interpretar: se `vagas_livres > 0`, a escola nao esgotou a
+    Cuidado ao interpretar: se `vagas_livres > 0`, o programa nao esgotou a
     capacidade e este numero e so o menor score de quem entrou, nao uma
     barreira de entrada -- mesma ressalva do `nota_corte_atual` da regua
-    oficial (ver `fila.py`). Confira `escola_classificada.lotado` antes de
+    oficial (ver `fila.py`). Confira `programa_classificado.lotado` antes de
     tratar este valor como corte real.
     """
-    if not escola_classificada.admitidos:
+    if not programa_classificado.admitidos:
         return None
     return min(
-        escola_classificada.scores[c.crianca_id]
-        for c in escola_classificada.admitidos
+        programa_classificado.scores[c.crianca_id]
+        for c in programa_classificado.admitidos
     )
 
 
 def posicao_na_fila(
-    crianca_id: str, escola_classificada: EscolaClassificada
+    crianca_id: str, programa_classificado: ProgramaClassificado
 ) -> Optional[int]:
-    """Posicao 1-based do candidato na classificacao da escola.
+    """Posicao 1-based do candidato na classificacao do programa.
 
-    None se ele nao esta na lista -- ou nunca listou esta escola, ou nao foi
-    incluido em `classificar_escola`.
+    None se ele nao esta na lista -- ou nunca listou este programa, ou nao
+    foi incluido em `classificar_programa`.
     """
-    for posicao, candidato in enumerate(escola_classificada.candidatos, start=1):
+    for posicao, candidato in enumerate(programa_classificado.candidatos, start=1):
         if candidato.crianca_id == crianca_id:
             return posicao
     return None
