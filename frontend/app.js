@@ -760,24 +760,33 @@ App.initClassificacao = function () {
       const btn = e.target;
       btn.disabled = true;
       btn.textContent = "Confirmando...";
+      const inscricaoCacheKey = "creche_inscricao_" + criancaId;
+      const inscricaoCache = JSON.parse(localStorage.getItem(inscricaoCacheKey) || "null") || {};
+      const preferenciasAntigas = inscricaoCache.preferencias;
+
       try {
         const novaOrdem = ordemEmEdicao.map((p) => ({ unidade: p.unidade, grupamento: p.grupamento, turno: p.turno }));
+
+        // atualiza o cache local de preferências ANTES de chamar a API: o
+        // retorno de Api.trocarPreferencias já usa esse cache (via
+        // RealApi.classificacao) para saber a turma/turno de cada unidade,
+        // então se isso rodar depois a unidade recém-adicionada aparece na
+        // lista sem turma/turno (parece "quebrada", mesmo já persistida).
+        // Em caso de falha, o catch abaixo desfaz essa escrita.
+        inscricaoCache.preferencias = ordemEmEdicao;
+        localStorage.setItem(inscricaoCacheKey, JSON.stringify(inscricaoCache));
+
         const resposta = await Api.trocarPreferencias(criancaId, novaOrdem);
         const dadosAtualizados = { classificacoes: resposta.classificacoes, sugestoes: dadosAtuais.sugestoes };
         const agora = App.formatDateHoraPt(new Date().toISOString());
         localStorage.setItem(cacheKey, JSON.stringify({ dados: dadosAtualizados, quando: agora }));
 
-        // mantém o cache local de preferências em sincronia (usado para
-        // mostrar turma/turno corretos após reordenar/adicionar/remover)
-        const inscricaoCacheKey = "creche_inscricao_" + criancaId;
-        const inscricaoCache = JSON.parse(localStorage.getItem(inscricaoCacheKey) || "null") || {};
-        inscricaoCache.preferencias = ordemEmEdicao;
-        localStorage.setItem(inscricaoCacheKey, JSON.stringify(inscricaoCache));
-
         modoTroca = false;
         renderNormal(dadosAtualizados, agora, false);
         root.insertAdjacentHTML("afterbegin", App.bannerHtml("success", "Suas opções foram atualizadas."));
       } catch (err) {
+        inscricaoCache.preferencias = preferenciasAntigas;
+        localStorage.setItem(inscricaoCacheKey, JSON.stringify(inscricaoCache));
         App.qs("#troca-banner").innerHTML = App.bannerHtml("error", App.mensagemErroAmigavel(err));
         btn.disabled = false;
         btn.textContent = "Confirmar alterações";
