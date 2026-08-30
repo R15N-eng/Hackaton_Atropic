@@ -1,22 +1,8 @@
 """Serviço do motor real (Deferred Acceptance) — Match Carioca.
 
-Envolve o motor da Pessoa 1 (`pessoa_1/`, na raiz do repo -- Deferred
-Acceptance com os critérios reais de desempate da SME + antiguidade da
-inscrição, não só sorteio) e expõe os três objetos do contrato acordado com
-o front: criança, programa e evento de notificação.
-
-Antes deste módulo usava `backend/engine/deferred_acceptance.py` (motor
-próprio, mais simples, desempate só por loteria) sobre
-`backend/data/*.parquet` (pipeline próprio, só 2025, sem os critérios de
-desempate por pergunta). Trocado pelo motor da Pessoa 1 porque:
-
-* os critérios reais de desempate (irmão na creche, mãe adolescente) só
-  existem no parquet gerado por `pessoa_1/build_data.py` -- o outro pipeline
-  só preserva o score somado, não quais perguntas específicas foram
-  respondidas 'Sim';
-* o motor da Pessoa 1 tem 164 testes (unitários + contra os 5 processos
-  reais), incluindo a descoberta de que uma desistência pode deslocar um
-  terceiro (não é monotônica) -- o motor antigo não cobria esse caso.
+Envolve `engine/deferred_acceptance.py` e os dois parquets agregados em
+`backend/data/`, e expõe os três objetos do contrato acordado com o front:
+criança, programa e evento de notificação.
 
 Regras que valem para todo este módulo:
 
@@ -31,17 +17,8 @@ Regras que valem para todo este módulo:
 * **`unidade_nome` vem de fora dos parquets** (a base de endereços da SME) e
   casa em ~58% das unidades. Onde não casa, fica `None` e o front mostra o
   código — em vez de inventar um nome.
-* **`programa` (a chave usada na API) não tem o ano.** O motor da Pessoa 1
-  usa `programa_id = "ano|unidade|grupamento|horario"` (para caber vários
-  anos no mesmo parquet); este serviço tira o prefixo do ano em
-  `_sem_ano`, porque a API e o front já publicados usam
-  `unidade|grupamento|turno` sem ano -- só existe 2025 aqui (`ANO`), então
-  o prefixo não carrega informação nova neste contexto.
 * **A alocação é calculada uma vez e mantida em memória.** O DA é
-  determinístico: mesma entrada, mesma saída (não depende de sorteio para
-  decidir quem entra -- os critérios de desempate são reais; sorteio só
-  entra se dois candidatos empatarem em score E em todos os critérios E na
-  data de inscrição, o que não ocorre nos dados reais).
+  determinístico: mesma entrada, mesma semente, mesma saída.
 """
 
 from __future__ import annotations
@@ -49,28 +26,28 @@ from __future__ import annotations
 import os
 import sys
 import datetime as dt
-from collections import Counter, defaultdict
+from collections import defaultdict
 from functools import lru_cache
 
-import pandas as pd
+import duckdb
 
-# pessoa_1/ é irmã de backend/ na raiz do repo
+# engine/ é irmã de app/ dentro de backend/
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_REPO_ROOT = os.path.dirname(_BACKEND_DIR)
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+sys.path.insert(0, os.path.join(_BACKEND_DIR, "engine"))
 
-from pessoa_1 import carga as motor_carga  # noqa: E402
-from pessoa_1 import fila as motor_fila  # noqa: E402
-from pessoa_1.deferred_acceptance import deferred_acceptance as rodar_deferred_acceptance  # noqa: E402
+from deferred_acceptance import deferred_acceptance, _loteria  # noqa: E402
+
+DATA_DIR = os.path.join(_BACKEND_DIR, "data")
+OPCOES_PARQUET = os.path.join(DATA_DIR, "opcoes.parquet")
+PROGRAMAS_PARQUET = os.path.join(DATA_DIR, "programas.parquet")
 
 # base de nomes de unidade (fora dos parquets, casamento parcial)
 _UNIDADES_CSV = os.path.join(
-    _REPO_ROOT, "dadoscreche-main",
+    _BACKEND_DIR, "..", "dadoscreche-main",
     "Bases IC_ ClassificadoseFila", "04_UnidadesEscolaresComEndereco.csv",
 )
 
-ANO = 2025
+SEMENTE = "rio2025"
 MAX_OPCOES = 5
 
 # Peso da pergunta do CadÚnico na régua oficial de 2025 (Query C da SME).
@@ -82,141 +59,117 @@ STATUS_ESPERA = "lista_de_espera"
 STATUS_FORA = "fora"
 
 
-def _sem_ano(programa_id: str) -> str:
-    """`"2025|0716601|Maternal II|Integral"` -> `"0716601|Maternal II|Integral"`.
-
-    Ver nota no docstring do módulo -- o contrato externo não tem o ano.
-    """
-    return programa_id.split("|", 1)[1]
-
-
-def _ou_none(valor):
-    """`None` tanto para `None` quanto para `NaN` -- pandas usa `NaN` (nao
-    `None`) para numero ausente ao ler parquet, e `int(NaN)` levanta erro."""
-    if valor is None:
-        return None
-    try:
-        if pd.isna(valor):
-            return None
-    except (TypeError, ValueError):
-        pass
-    return valor
-
-
 class MotorState:
     """Estado carregado do motor: opções, capacidades, alocação e índices."""
 
     def __init__(self) -> None:
-        candidatos, programas = motor_carga.carregar_ano(ANO)
-        self._por_programa_id = {p.programa_id: p for p in programas}
+        con = duckdb.connect()
 
-        # Metadados de exibição direto do parquet (bairro/CRE/geo, demanda) --
-        # não passam pelos dataclasses do motor porque não são entrada do
-        # algoritmo, só informação para a tela.
-        tabela_programas = pd.read_parquet(motor_carga.DIR_DADOS / "programas.parquet")
-        tabela_programas = tabela_programas[tabela_programas["ano"] == ANO]
-        self.programas = {}
-        for linha in tabela_programas.to_dict("records"):
-            prog = _sem_ano(linha["programa_id"])
-            self.programas[prog] = {
-                "unidade": linha.get("unidade"),
-                "grupamento": linha.get("grupamento"),
-                "turno": linha.get("horario"),
-                "capacidade": int(linha.get("vagas") or 0),
-                # NaN (nao None) quando a unidade nao geocodificou -- pandas
-                # representa "sem valor" numerico como NaN, nao None
-                "bairro_unidade": _ou_none(linha.get("bairro_unidade")),
-                "CRE": _ou_none(linha.get("cre")),
-                "lat": _ou_none(linha.get("lat")),
-                "lon": _ou_none(linha.get("lon")),
-            }
-        self.capacidades = {p: info["capacidade"] for p, info in self.programas.items()}
+        self.opcoes = con.sql(
+            f"""
+            select crianca, programa, pref, score, unidade, grupamento, turno
+            from '{OPCOES_PARQUET.replace(os.sep, '/')}'
+            where pref <= {MAX_OPCOES}
+            """
+        ).df().to_dict("records")
 
-        self.nomes_unidade = self._carregar_nomes()
-
-        # score por criança e preferências ordenadas -- direto dos objetos do
-        # motor, sem reler o parquet (Candidato já agrega multi-inscrição
-        # pegando o maior score, mesma regra de antes).
-        #
-        # Sem limite de 5 aqui de propósito: o algoritmo (`motor_da`, abaixo)
-        # usa `candidato.preferencias` inteira, sem cortar -- exibir só as 5
-        # primeiras faria a tela mentir sobre o que o motor considerou. Para
-        # a maioria das crianças são <=5 mesmo (uma inscrição, até 5 opções);
-        # passa disso só nos ~13% de multi-inscrição no ano (preferências de
-        # duas inscrições concatenadas, ver `carga.carregar_candidatos`).
-        self.score = {c.crianca_id: float(int(c.score)) for c in candidatos}
-        self.prefs = {
-            c.crianca_id: [_sem_ano(p) for p in c.preferencias] for c in candidatos
+        prog_df = con.sql(
+            f"""
+            select programa, unidade, grupamento, turno, capacidade,
+                   demanda_opcoes, demanda_criancas, bairro_unidade, CRE
+            from '{PROGRAMAS_PARQUET.replace(os.sep, '/')}'
+            """
+        ).df()
+        self.programas = {r["programa"]: r for r in prog_df.to_dict("records")}
+        self.capacidades = {
+            r["programa"]: int(r["capacidade"]) for r in prog_df.to_dict("records")
         }
+
+        self.nomes_unidade = self._carregar_nomes(con)
+        con.close()
+
+        # score por criança (a maior, se houver mais de uma inscrição)
+        self.score = {}
+        for o in self.opcoes:
+            cr = o["crianca"]
+            self.score[cr] = max(self.score.get(cr, 0.0), float(o["score"]))
+
+        # preferências ordenadas por criança
+        self.prefs = defaultdict(list)
+        for o in self.opcoes:
+            self.prefs[o["crianca"]].append((int(o["pref"]), o["programa"]))
+        for cr in self.prefs:
+            self.prefs[cr] = [p for _, p in sorted(set(self.prefs[cr]))]
+
+        # (crianca, programa) -> pref, para saber a que opção corresponde a vaga
         self.pref_de = {
-            (c.crianca_id, _sem_ano(p)): i + 1
-            for c in candidatos
-            for i, p in enumerate(c.preferencias)
+            (o["crianca"], o["programa"]): int(o["pref"]) for o in self.opcoes
         }
 
-        # demanda: quantas opções/crianças distintas listaram cada programa.
-        # Nota: como Candidato agrega multi-inscrição num só (ver
-        # carregar_candidatos), demanda_opcoes == demanda_criancas aqui,
-        # diferente do pipeline anterior (que contava por inscrição, não por
-        # criança) -- diferença so nos ~8.000 casos de multi-inscrição/ano,
-        # e so afeta esses dois numeros de exibicao, nao o algoritmo.
-        self.demanda_opcoes = Counter()
-        self.demanda_criancas = Counter()
-        for prefs in self.prefs.values():
-            for prog in set(prefs):
-                self.demanda_opcoes[prog] += 1
-                self.demanda_criancas[prog] += 1
-
-        # --- motor real: Deferred Acceptance da Pessoa 1 -----------------
-        alocacao = rodar_deferred_acceptance(candidatos, programas)
-        self._alocacao_motor = alocacao
-        self.alocacao = {cr: _sem_ano(pid) for cr, pid in alocacao.matches.items()}
+        # alocação base
+        self.alocacao = deferred_acceptance(
+            [
+                {"crianca": o["crianca"], "programa": o["programa"],
+                 "pref": int(o["pref"]), "score": float(o["score"])}
+                for o in self.opcoes
+            ],
+            self.capacidades,
+            semente=SEMENTE,
+        )
 
         self._indexar()
 
-    def _carregar_nomes(self) -> dict:
+    def _carregar_nomes(self, con) -> dict:
         """Nomes de unidade da base de endereços da SME. Casamento parcial —
         onde não casa, a unidade fica sem nome (o front mostra o código)."""
-        if not os.path.exists(_UNIDADES_CSV):
+        caminho = os.path.abspath(_UNIDADES_CSV)
+        if not os.path.exists(caminho):
             return {}
         try:
-            df = motor_carga.consultar_duckdb(
+            df = con.sql(
                 f"""
                 select column1 as esc_codigo, column2 as nome
-                from read_csv_auto('{_UNIDADES_CSV.replace(os.sep, '/')}',
+                from read_csv_auto('{caminho.replace(os.sep, '/')}',
                                    delim=';', header=false, encoding='utf-8')
                 """
-            )
+            ).df()
             return dict(zip(df.esc_codigo.astype(str), df.nome))
         except Exception:
             # base de nomes é acessório: sem ela o motor continua funcionando
             return {}
 
     def _indexar(self) -> None:
-        """Índices derivados da alocação atual: ocupação, corte e fila.
-
-        `nota_corte`/`lista_espera` vem direto do resultado do motor
-        (`ProgramaAlocado.admitidos`/`.fila`), já ordenados pelos critérios
-        reais de desempate (não recalculados aqui com um score+loteria
-        aproximado, como antes).
-        """
+        """Índices derivados da alocação atual: ocupação, corte e fila."""
         self.ocupadas = defaultdict(list)
         for cr, prog in self.alocacao.items():
             self.ocupadas[prog].append(cr)
 
+        # nota de corte: menor score entre as alocadas — só faz sentido se o
+        # programa encheu. Se sobrou vaga, não houve corte (None).
         self.nota_corte = {}
-        self.lista_espera = {}
-        for programa_id, programa_alocado in self._alocacao_motor.programas.items():
-            prog = _sem_ano(programa_id)
-            # só reporta corte se o programa de fato lotou -- com vaga
-            # sobrando o "menor score admitido" não é uma barreira real
-            # (mesma ressalva de `fila.nota_corte_atual`)
-            self.nota_corte[prog] = (
-                motor_fila.nota_corte_atual(programa_alocado)
-                if programa_alocado.lotado
-                else None
+        for prog, crs in self.ocupadas.items():
+            cap = self.capacidades.get(prog, 0)
+            if crs and len(crs) >= cap:
+                self.nota_corte[prog] = min(self.score.get(c, 0.0) for c in crs)
+            else:
+                self.nota_corte[prog] = None
+
+        # Lista de espera de um programa X: crianças que listaram X, não foram
+        # alocadas em X, e cuja alocação atual é PIOR que X (pref maior) ou
+        # inexistente — ou seja, aceitariam X se abrisse vaga. Ordenada por
+        # prioridade do DA (score desc, depois a loteria única).
+        self.lista_espera = defaultdict(list)
+        for (cr, prog), pref in self.pref_de.items():
+            if self.alocacao.get(cr) == prog:
+                continue
+            atual = self.alocacao.get(cr)
+            pref_atual = self.pref_de.get((cr, atual)) if atual else None
+            if atual is None or (pref_atual is not None and pref_atual > pref):
+                self.lista_espera[prog].append(cr)
+        for prog in self.lista_espera:
+            self.lista_espera[prog].sort(
+                key=lambda c: (-self.score.get(c, 0.0), -_loteria(c, SEMENTE))
             )
-            self.lista_espera[prog] = [c.crianca_id for c in programa_alocado.fila]
 
 
 _STATE: MotorState | None = None
@@ -330,7 +283,7 @@ def analise_por_programa(programa: str, limite_fila: int = 50) -> dict | None:
         "capacidade": int(info["capacidade"]),
         "ocupadas": len(ocupadas),
         "nota_de_corte_atual": st.nota_corte.get(programa),
-        "demanda_criancas": int(st.demanda_criancas.get(programa, 0)),
+        "demanda_criancas": int(info["demanda_criancas"]),
         "total_lista_de_espera": len(fila),
         # quem ocupa as vagas hoje, da menor para a maior pontuação — é desta
         # lista que sai o candidato a "não confirmou" na tela de reclassificação
@@ -386,14 +339,8 @@ def listar_programas(busca: str = "", limite: int = 100) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def reclassificar_sem(aluno_anon: str) -> dict:
-    """Simula 'a criança não confirmou': remove a criança do processo, roda
-    o motor de novo e devolve o diff entre a alocação antiga e a nova.
-
-    Usa `pessoa_1.reclassificar` com `saidas=[aluno_anon]` -- saída completa
-    do processo, não desistência de uma opção específica (essa distinção
-    importa: desistir de UMA opção pode deslocar um terceiro sem liberar
-    vaga alguma, ver `pessoa_1/README.md`; aqui é sempre saída total, que É
-    monotônica -- nunca piora a situação de terceiros).
+    """Simula 'a criança não confirmou': remove todas as opções dela, roda o
+    DA de novo e devolve o diff entre a alocação antiga e a nova.
 
     Não altera o estado global — a alocação base continua intacta, para a
     demo poder rodar o mesmo cenário várias vezes.
@@ -402,26 +349,39 @@ def reclassificar_sem(aluno_anon: str) -> dict:
     if aluno_anon not in st.prefs:
         return {"erro": "crianca_nao_encontrada", "aluno_anon": aluno_anon}
 
-    from pessoa_1.reclassificar import reclassificar as rodar_reclassificar
-
     programa_liberado = st.alocacao.get(aluno_anon)
-    resultado = rodar_reclassificar(st._alocacao_motor, saidas=[aluno_anon])
-    nova = {cr: _sem_ano(pid) for cr, pid in resultado.alocacao.matches.items()}
 
-    movimentos = [
-        {
-            "aluno_anon": m.crianca_id,
-            "score": float(m.score),
-            "cadunico": _eh_cadunico(float(m.score)),
-            "de": _sem_ano(m.de) if m.de else None,
-            "para": _sem_ano(m.para) if m.para else None,
-            "de_posicao": m.posicao_na_fila_anterior,
-            "para_posicao": "alocada",
-            "tipo": "subiu_da_lista_de_espera" if m.de is None else "trocou_de_programa",
-        }
-        for m in resultado.subiram
+    opcoes_sem = [
+        {"crianca": o["crianca"], "programa": o["programa"],
+         "pref": int(o["pref"]), "score": float(o["score"])}
+        for o in st.opcoes if o["crianca"] != aluno_anon
     ]
-    perderam = [m.crianca_id for m in resultado.sairam if m.crianca_id != aluno_anon]
+    nova = deferred_acceptance(opcoes_sem, st.capacidades, semente=SEMENTE)
+
+    # diff: quem mudou de situação por causa da saída
+    movimentos = []
+    for cr, prog_novo in nova.items():
+        prog_antigo = st.alocacao.get(cr)
+        if prog_antigo == prog_novo or cr == aluno_anon:
+            continue
+        fila_antiga = st.lista_espera.get(prog_novo, [])
+        movimentos.append({
+            "aluno_anon": cr,
+            "score": st.score.get(cr, 0.0),
+            "cadunico": _eh_cadunico(st.score.get(cr, 0.0)),
+            "de": prog_antigo,
+            "para": prog_novo,
+            "de_posicao": (fila_antiga.index(cr) + 1) if cr in fila_antiga else None,
+            "para_posicao": "alocada",
+            "tipo": "subiu_da_lista_de_espera" if prog_antigo is None else "trocou_de_programa",
+        })
+
+    perderam = [
+        cr for cr, prog in st.alocacao.items()
+        if cr != aluno_anon and cr not in nova
+    ]
+
+    movimentos.sort(key=lambda m: -m["score"])
 
     return {
         "aluno_anon_removido": aluno_anon,
@@ -554,6 +514,6 @@ def metricas_gerais() -> dict:
         "preferencia_media": round(sum(prefs_atendidas) / max(len(prefs_atendidas), 1), 2),
         "pct_vulneraveis_colocadas": round(100 * vuln_col / max(len(vuln), 1), 1),
         "pct_nao_vulneraveis_colocadas": round(100 * nao_vuln_col / max(len(nao_vuln), 1), 1),
-        "semente": "motor-pessoa1-deterministico",
+        "semente": SEMENTE,
         "max_opcoes": MAX_OPCOES,
     }
