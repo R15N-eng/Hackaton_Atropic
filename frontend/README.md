@@ -1,4 +1,4 @@
-# Frontend — Inscrição Creche RJ
+# Frontend — Match Carioca
 
 HTML + CSS + JS puro. Sem framework, sem build, sem `node_modules`.
 

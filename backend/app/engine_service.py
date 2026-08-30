@@ -285,6 +285,17 @@ def analise_por_programa(programa: str, limite_fila: int = 50) -> dict | None:
         "nota_de_corte_atual": st.nota_corte.get(programa),
         "demanda_criancas": int(info["demanda_criancas"]),
         "total_lista_de_espera": len(fila),
+        # quem ocupa as vagas hoje, da menor para a maior pontuação — é desta
+        # lista que sai o candidato a "não confirmou" na tela de reclassificação
+        "alocadas": [
+            {
+                "aluno_anon": cr,
+                "score": st.score.get(cr, 0.0),
+                "cadunico": _eh_cadunico(st.score.get(cr, 0.0)),
+                "pref_atendida": st.pref_de.get((cr, programa)),
+            }
+            for cr in sorted(ocupadas, key=lambda c: st.score.get(c, 0.0))
+        ],
         "lista_de_espera": [
             {
                 "aluno_anon": cr,

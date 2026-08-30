@@ -40,6 +40,12 @@ COL_GRUPAMENTO = "grupamento"
 COL_HORARIO = "horario"
 COL_VAGAS = "vagas"
 
+# Geocodificacao real (join com Unidades_Unificadas_com_Localizacao.xlsx em
+# build_data.py) -- NULL quando a unidade nao casa (~57% casam hoje) ou o
+# Excel nao esta disponivel no ambiente.
+COL_LAT = "lat"
+COL_LON = "lon"
+
 # --- vocabulario da coluna `situacao` (Query A) ----------------------------
 # Enum reconstruido no dicionario de dados. Atencao a grafia gravada no banco:
 # "Cancelado na confirmacao" vem sem cedilha e sem til.

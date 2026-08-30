@@ -56,6 +56,45 @@ def alocacao(ano_real):
     return deferred_acceptance(candidatos, programas)
 
 
+# --- geocodificacao (build_data.py + carga.carregar_programas) ------------
+def test_maioria_dos_programas_reais_tem_geocodificacao():
+    """~57% dos programas casam com a base de enderecos -- nao e 100%, mas
+    e a maioria. Se cair pra proximo de 0, o join em build_data.py quebrou."""
+    _pular_sem_dados()
+    programas = carga.carregar_programas(ANO)
+    com_geo = [p for p in programas if p.localizacao is not None]
+    assert len(com_geo) > len(programas) * 0.4
+
+
+def test_localizacao_real_esta_dentro_do_rio_de_janeiro():
+    """Sanity check grosseiro: lat/lon geocodificados tem que cair dentro da
+    faixa geografica do municipio do Rio -- um erro de join/unidade
+    normalmente produz coordenada fora completamente, nao sutilmente errada."""
+    _pular_sem_dados()
+    programas = carga.carregar_programas(ANO)
+    com_geo = [p for p in programas if p.localizacao is not None]
+    if not com_geo:
+        pytest.skip("nenhum programa geocodificado neste build")
+    for p in com_geo:
+        assert -23.1 < p.localizacao.latitude < -22.7, p.programa_id
+        assert -43.8 < p.localizacao.longitude < -43.0, p.programa_id
+
+
+def test_menor_distancia_real_funciona_entre_dois_programas_geocodificados():
+    """Fim a fim: dois programas reais com geo, calcula a distancia entre
+    eles com a formula de haversine -- so confirma que o campo populado por
+    carga.py e utilizavel pela linha de vulnerabilidade sem nenhum ajuste."""
+    from pessoa_1.localizacao import distancia_km
+
+    _pular_sem_dados()
+    programas = carga.carregar_programas(ANO)
+    com_geo = [p for p in programas if p.localizacao is not None]
+    if len(com_geo) < 2:
+        pytest.skip("menos de 2 programas geocodificados neste build")
+    d = distancia_km(com_geo[0].localizacao, com_geo[1].localizacao)
+    assert 0 <= d < 200  # Rio de Janeiro nao tem 200km de ponta a ponta
+
+
 # --- regua real (Query C) --------------------------------------------------
 def test_query_c_tem_13_perguntas_por_ano(reguas):
     assert set(reguas) == {2021, 2022, 2023, 2024, 2025}
