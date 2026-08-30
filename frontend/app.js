@@ -523,10 +523,12 @@ App.initClassificacao = function () {
 
       ${dados.sugestoes && dados.sugestoes.length > 0 ? `
         <hr class="divider">
-        <p class="section-title">Outras unidades com chance real</p>
-        <p class="section-sub">Estas são <b>sugestões</b> — elas nunca substituem a sua preferência declarada. Sua ordem de preferência continua sendo a que você escolheu.</p>
+        <p class="section-title">Suas outras opções</p>
+        <p class="section-sub">As demais creches que <b>você mesma escolheu</b>, e sua posição na fila de cada uma.</p>
         <div class="stack-tight">${dados.sugestoes.map(cardSugestao).join("")}</div>
       ` : ""}
+
+      <div id="area-recomendacoes"></div>
 
       <p class="meta-line" style="margin-top:20px;justify-content:center;">🔄 Lista atualizada diariamente · última atualização: ${atualizadoEm}</p>
     `;
@@ -539,6 +541,45 @@ App.initClassificacao = function () {
         btnTrocar.textContent = "Prazo para troca encerrado";
       }
       btnTrocar.addEventListener("click", () => abrirModoTroca(dados.classificacoes));
+    }
+
+    carregarRecomendacoes();
+  }
+
+  /* Recomendações: unidades FORA das preferências declaradas onde a pontuação
+     da família daria chance real. Carregam depois do resto porque são
+     consultivas — se falharem, a tela principal não pode deixar de funcionar. */
+  async function carregarRecomendacoes() {
+    const area = App.qs("#area-recomendacoes");
+    if (!area) return;
+    try {
+      const recs = await Api.buscarRecomendacoes(criancaId, 4);
+      if (!recs || !recs.length) { area.innerHTML = ""; return; }
+      area.innerHTML = `
+        <hr class="divider">
+        <p class="section-title">Outras unidades com chance real</p>
+        <p class="section-sub">Creches que <b>você não escolheu</b>, mas onde sua pontuação
+          daria vaga hoje. São apenas sugestões: <b>sua ordem de preferência continua
+          exatamente como você declarou</b> — nada muda a não ser que você peça.</p>
+        <div class="stack-tight">
+          ${recs.map((r) => `
+            <div class="pref-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <span>
+                <b>${r.programa_nome}</b>${r.bairro ? ` <span class="section-sub" style="margin:0;">· ${r.bairro}</span>` : ""}
+                <span class="section-sub" style="display:block;margin:2px 0 0;">${r.motivo}</span>
+              </span>
+              <span class="badge badge-${r.chance === "alta" ? "alta" : "media"}" style="flex:none;">
+                ${r.chance === "alta" ? "Chance alta" : "Chance média"}
+              </span>
+            </div>`).join("")}
+        </div>
+        <p class="section-sub" style="margin-top:8px;">
+          Quer incluir alguma delas? Use <b>Gerenciar minhas opções</b> acima.
+        </p>`;
+    } catch (_) {
+      // silencioso de proposito: recomendacao e extra, nao vale poluir a tela
+      // com erro de algo que a familia nao pediu
+      area.innerHTML = "";
     }
   }
 

@@ -67,10 +67,32 @@ class AvancarProcessoIn(BaseModel):
 
 
 class SugestaoOut(BaseModel):
+    """Uma das OUTRAS preferencias declaradas pela propria familia.
+
+    Nao confundir com `RecomendacaoOut`: esta lista e feita das unidades que a
+    familia ja escolheu, so excluindo a que ela ocupa hoje.
+    """
+
     programa_id: int
     programa_nome: str
     posicao_na_fila: int
     nota_corte_atual: float | None
+
+
+class RecomendacaoOut(BaseModel):
+    """Unidade FORA das preferencias declaradas onde a pontuacao da crianca daria
+    chance real de vaga. E consultiva: nunca entra na ordem de preferencia
+    sozinha, so informa a familia de uma opcao que ela nao considerou."""
+
+    programa_id: int
+    programa_nome: str
+    bairro: str
+    capacidade: int
+    inscritos: int
+    nota_corte_atual: float | None
+    posicao_estimada: int
+    chance: str  # "alta" | "media"
+    motivo: str
 
 
 class ClassificacaoOut(BaseModel):

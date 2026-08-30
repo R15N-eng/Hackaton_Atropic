@@ -560,6 +560,83 @@ def remover_preferencia(
     return _serializar_inscricao(crianca)
 
 
+@app.get("/classificacao/{crianca_id}/recomendacoes", response_model=list[schemas.RecomendacaoOut])
+def recomendacoes(crianca_id: int, limite: int = 4, db: Session = Depends(get_db)):
+    """Unidades FORA das preferencias declaradas onde a pontuacao da crianca
+    daria chance real de vaga.
+
+    Isso e diferente do campo `sugestoes` de GET /classificacao/{id}, que lista
+    as OUTRAS preferencias da propria familia — util, mas nao e recomendacao.
+    Aqui olhamos o catalogo inteiro, tiramos o que a familia ja escolheu, e
+    devolvemos onde ela entraria.
+
+    Consultivo por construcao: este endpoint nao escreve nada. A ordem de
+    preferencia declarada so muda se a familia pedir, em POST /escolher_unidade
+    ou /preferencias/{id}/adicionar.
+    """
+    crianca = db.get(models.Crianca, crianca_id)
+    if crianca is None:
+        raise HTTPException(404, "Crianca nao encontrada")
+
+    score = crianca.score or 0.0
+    ja_escolhidos = {p.programa_id for p in crianca.preferencias}
+
+    saida: list[schemas.RecomendacaoOut] = []
+    for programa in db.query(models.Programa).all():
+        if programa.id in ja_escolhidos:
+            continue
+
+        corte = classification_engine.nota_corte_atual(programa.id, db)
+        inscritos = (
+            db.query(models.Preferencia)
+            .filter(models.Preferencia.programa_id == programa.id)
+            .count()
+        )
+        vagas_livres = programa.capacidade - inscritos
+
+        # "chance real" tem dois caminhos, e cada um diz uma coisa diferente
+        # para a familia — por isso o motivo vai junto, em vez de so um rotulo.
+        if corte is None and vagas_livres > 0:
+            chance, motivo = "alta", (
+                f"ainda tem {vagas_livres} "
+                f"{'vaga sem disputa' if vagas_livres == 1 else 'vagas sem disputa'}"
+            )
+        elif corte is not None and score >= corte:
+            chance, motivo = "alta", (
+                f"sua pontuacao ({score:g}) alcanca o corte atual ({corte:g})"
+            )
+        elif corte is not None and score >= corte - 5:
+            chance, motivo = "media", (
+                f"sua pontuacao ({score:g}) esta a {corte - score:g} "
+                f"do corte atual ({corte:g})"
+            )
+        else:
+            continue
+
+        posicao, _total = classification_engine.posicao_na_fila(crianca_id, programa.id, db)
+        saida.append(
+            schemas.RecomendacaoOut(
+                programa_id=programa.id,
+                programa_nome=programa.nome,
+                bairro=programa.bairro or "",
+                capacidade=programa.capacidade,
+                inscritos=inscritos,
+                nota_corte_atual=corte,
+                # posicao_na_fila devolve 0 quando a crianca nao esta na fila
+                # daquele programa (o caso normal aqui) -- entao a estimativa e
+                # "entraria depois de quem ja esta inscrito"
+                posicao_estimada=posicao if posicao > 0 else inscritos + 1,
+                chance=chance,
+                motivo=motivo,
+            )
+        )
+
+    # chance alta primeiro, depois mais folga de vaga
+    ordem = {"alta": 0, "media": 1}
+    saida.sort(key=lambda r: (ordem[r.chance], r.posicao_estimada))
+    return saida[:limite]
+
+
 @app.post("/escolher_unidade", response_model=schemas.ClassificacaoOut)
 def escolher_unidade(
     crianca_id: int,

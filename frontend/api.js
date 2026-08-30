@@ -776,6 +776,16 @@ const Api = {
   confirmarUnidade: (criancaId, unidade) => (USE_MOCK ? MockApi.confirmarUnidade(criancaId, unidade) : RealApi.confirmarUnidade(criancaId, unidade)),
   preverPosicao: (criancaId, unidade, grupamento, turno) => (USE_MOCK ? MockApi.preverPosicao(criancaId, unidade, grupamento, turno) : RealApi.preverPosicao(criancaId, unidade, grupamento, turno)),
   buscarClassificacao: (criancaId) => (USE_MOCK ? MockApi.classificacao(criancaId) : RealApi.classificacao(criancaId)),
+
+  /* Recomendações = unidades FORA das 5 preferências onde a pontuação daria
+     chance real. Diferente do campo `sugestoes` da classificação, que são as
+     OUTRAS preferências da própria família. São consultivas: aparecer aqui não
+     mexe na ordem declarada. No mock devolve [] — a lista real depende do
+     catálogo e da ocupação, que só o backend conhece. */
+  buscarRecomendacoes: (criancaId, limite = 4) =>
+    (USE_MOCK
+      ? Promise.resolve([])
+      : httpJson(`/classificacao/${encodeURIComponent(criancaId)}/recomendacoes?limite=${limite}`)),
   trocarPreferencias: (criancaId, novaOrdem) => (USE_MOCK ? MockApi.trocar(criancaId, novaOrdem) : RealApi.trocar(criancaId, novaOrdem)),
   buscarStatusMatricula: (criancaId) => (USE_MOCK ? MockApi.statusMatricula(criancaId) : RealApi.statusMatricula(criancaId)),
 
