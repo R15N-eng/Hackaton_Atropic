@@ -355,3 +355,196 @@ App.initVerificacao = function () {
     App.goTo("classificacao.html", { crianca_id: criancaId });
   });
 };
+
+/* ============================================================
+   TELA 3 — Classificação (a tela mais importante)
+   ============================================================ */
+
+App.initClassificacao = function () {
+  const root = App.qs("#conteudo-classificacao");
+  const criancaId = App.getCriancaId();
+  const cacheKey = "creche_classificacao_cache_" + criancaId;
+
+  if (!criancaId) {
+    root.innerHTML = App.erroHtml("Não encontramos sua inscrição. Comece pela tela de inscrição.");
+    return;
+  }
+
+  const STATUS_LABEL = {
+    dentro: "Dentro da chamada atual",
+    espera: "Lista de espera",
+    fora: "Fora da vaga por enquanto",
+  };
+  const CHANCE_LABEL = { alta: "Chance alta", media: "Chance média", baixa: "Chance baixa" };
+
+  let dadosAtuais = null;   // { classificacoes, sugestoes }
+  let modoTroca = false;
+  let ordemEmEdicao = [];
+
+  function badgeStatus(status) {
+    return `<span class="badge badge-${status}">${STATUS_LABEL[status] || status}</span>`;
+  }
+
+  function cardClassificacao(item, idx) {
+    const dias = App.diasRestantes(item.pode_trocar_ate);
+    const podeTrocar = dias > 0;
+    return `
+      <div class="card">
+        <p class="small-caps">${item.programa.nome_unidade} · ${item.programa.grupamento} · ${item.programa.turno}</p>
+        <div class="position-hero">
+          <div class="num">${App.ordinal(item.posicao)}</div>
+          <p class="of">posição de ${item.total_fila} na fila</p>
+        </div>
+        <div style="display:flex;justify-content:center;margin-bottom:14px;">${badgeStatus(item.status)}</div>
+        <div style="text-align:center;">
+          ${podeTrocar
+            ? `<span class="countdown">⏳ Você pode trocar sua escolha por mais ${dias} dia${dias === 1 ? "" : "s"}</span>`
+            : `<span class="countdown expired">Prazo para troca encerrado em ${App.formatDatePt(item.pode_trocar_ate)}</span>`}
+        </div>
+      </div>
+    `;
+  }
+
+  function cardSugestao(s) {
+    return `
+      <div class="pref-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <span>
+          <b>${s.nome_unidade}</b><br>
+          <span class="section-sub" style="margin:2px 0 0;">${s.grupamento} · ${s.turno}</span>
+        </span>
+        <span class="badge badge-${s.chance}">${CHANCE_LABEL[s.chance]}</span>
+      </div>
+    `;
+  }
+
+  function renderNormal(dados, atualizadoEm, avisoCache) {
+    dadosAtuais = dados;
+    const semClassificacao = !dados.classificacoes || dados.classificacoes.length === 0;
+
+    root.innerHTML = `
+      ${avisoCache ? App.bannerHtml("warning", "Não conseguimos atualizar agora. Mostrando a última posição salva neste aparelho.") : ""}
+
+      ${semClassificacao
+        ? App.emptyHtml("Sua inscrição ainda está sendo processada. Volte em algumas horas para ver sua posição na fila.")
+        : `
+        <div class="stack">
+          ${dados.classificacoes.map(cardClassificacao).join("")}
+        </div>
+
+        <div style="margin-top:16px;">
+          <button type="button" id="btn-trocar" class="btn btn-secondary btn-block">Trocar minha escolha</button>
+        </div>
+
+        <div id="area-troca" style="margin-top:12px;"></div>
+        `}
+
+      ${dados.sugestoes && dados.sugestoes.length > 0 ? `
+        <hr class="divider">
+        <p class="section-title">Outras unidades com chance real</p>
+        <p class="section-sub">Estas são <b>sugestões</b> — elas nunca substituem a sua preferência declarada. Sua ordem de preferência continua sendo a que você escolheu.</p>
+        <div class="stack-tight">${dados.sugestoes.map(cardSugestao).join("")}</div>
+      ` : ""}
+
+      <p class="meta-line" style="margin-top:20px;justify-content:center;">🔄 Lista atualizada diariamente · última atualização: ${atualizadoEm}</p>
+    `;
+
+    const btnTrocar = App.qs("#btn-trocar");
+    if (btnTrocar) {
+      const podeTrocarGlobal = dados.classificacoes.some((c) => App.diasRestantes(c.pode_trocar_ate) > 0);
+      if (!podeTrocarGlobal) {
+        btnTrocar.disabled = true;
+        btnTrocar.textContent = "Prazo para troca encerrado";
+      }
+      btnTrocar.addEventListener("click", () => abrirModoTroca(dados.classificacoes));
+    }
+  }
+
+  function abrirModoTroca(classificacoes) {
+    modoTroca = true;
+    ordemEmEdicao = classificacoes.map((c) => ({ ...c.programa }));
+    renderModoTroca();
+  }
+
+  function renderModoTroca() {
+    const area = App.qs("#area-troca");
+    if (!area) return;
+    area.innerHTML = `
+      <div class="card">
+        <p class="section-title">Reordenar suas opções</p>
+        <p class="section-sub">Use as setas para mudar a ordem. A 1ª opção é a que a família mais quer.</p>
+        <div class="stack-tight" id="lista-reordenar">
+          ${ordemEmEdicao.map((p, i) => `
+            <div class="pref-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;" data-i="${i}">
+              <span class="pref-badge"><span class="n">${i + 1}</span> ${p.nome_unidade}</span>
+              <span class="reorder-btns">
+                <button type="button" data-mover="cima" ${i === 0 ? "disabled" : ""} aria-label="Mover para cima">↑</button>
+                <button type="button" data-mover="baixo" ${i === ordemEmEdicao.length - 1 ? "disabled" : ""} aria-label="Mover para baixo">↓</button>
+              </span>
+            </div>
+          `).join("")}
+        </div>
+        <div id="troca-banner" style="margin-top:12px;"></div>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+          <button type="button" id="btn-cancelar-troca" class="btn btn-ghost" style="flex:1;">Cancelar</button>
+          <button type="button" id="btn-confirmar-troca" class="btn btn-primary" style="flex:1;">Confirmar nova ordem</button>
+        </div>
+      </div>
+    `;
+
+    App.qs("#lista-reordenar").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-mover]");
+      if (!btn) return;
+      const row = btn.closest("[data-i]");
+      const i = Number(row.dataset.i);
+      const alvo = btn.dataset.mover === "cima" ? i - 1 : i + 1;
+      if (alvo < 0 || alvo >= ordemEmEdicao.length) return;
+      [ordemEmEdicao[i], ordemEmEdicao[alvo]] = [ordemEmEdicao[alvo], ordemEmEdicao[i]];
+      renderModoTroca();
+    });
+
+    App.qs("#btn-cancelar-troca").addEventListener("click", () => {
+      modoTroca = false;
+      App.qs("#area-troca").innerHTML = "";
+    });
+
+    App.qs("#btn-confirmar-troca").addEventListener("click", async (e) => {
+      const btn = e.target;
+      btn.disabled = true;
+      btn.textContent = "Confirmando...";
+      try {
+        const novaOrdem = ordemEmEdicao.map((p) => ({ unidade: p.unidade, grupamento: p.grupamento, turno: p.turno }));
+        const resposta = await Api.trocarPreferencias(criancaId, novaOrdem);
+        const dadosAtualizados = { classificacoes: resposta.classificacoes, sugestoes: dadosAtuais.sugestoes };
+        const agora = App.formatDateHoraPt(new Date().toISOString());
+        localStorage.setItem(cacheKey, JSON.stringify({ dados: dadosAtualizados, quando: agora }));
+        modoTroca = false;
+        renderNormal(dadosAtualizados, agora, false);
+        root.insertAdjacentHTML("afterbegin", App.bannerHtml("success", "Sua nova ordem de preferência foi salva."));
+      } catch (err) {
+        App.qs("#troca-banner").innerHTML = App.bannerHtml("error", App.mensagemErroAmigavel(err));
+        btn.disabled = false;
+        btn.textContent = "Confirmar nova ordem";
+      }
+    });
+  }
+
+  async function carregar() {
+    root.innerHTML = App.loadingHtml("Carregando sua posição na fila...");
+    try {
+      const dados = await Api.buscarClassificacao(criancaId);
+      const agora = App.formatDateHoraPt(new Date().toISOString());
+      localStorage.setItem(cacheKey, JSON.stringify({ dados, quando: agora }));
+      renderNormal(dados, agora, false);
+    } catch (err) {
+      const cache = JSON.parse(localStorage.getItem(cacheKey) || "null");
+      if (cache) {
+        renderNormal(cache.dados, cache.quando, true);
+      } else {
+        root.innerHTML = App.erroHtml(App.mensagemErroAmigavel(err), true);
+        App.qs('[data-acao="retentar"]').addEventListener("click", carregar);
+      }
+    }
+  }
+
+  carregar();
+};
