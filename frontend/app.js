@@ -89,7 +89,7 @@ App.erroHtml = (texto, comBotaoRetentar) => `
    TELA 1 — Inscrição
    ============================================================ */
 
-App.initInscricao = function () {
+App.initInscricao = async function () {
   const MAX_PREFS = 5;
   const listaEl = App.qs("#lista-preferencias");
   const perguntasEl = App.qs("#lista-perguntas");
@@ -99,6 +99,15 @@ App.initInscricao = function () {
   const btnEnviar = App.qs("#btn-enviar");
 
   let prefCount = 0;
+  let unidades;
+  try {
+    unidades = await Api.listarUnidades();
+  } catch (err) {
+    listaEl.innerHTML = App.erroHtml("Não foi possível carregar a lista de unidades. Recarregue a página para tentar de novo.");
+    btnAdicionar.style.display = "none";
+    btnEnviar.disabled = true;
+    return;
+  }
 
   function optionsHtml(list, valueKey, labelKey) {
     return list.map((item) => {
@@ -125,7 +134,7 @@ App.initInscricao = function () {
           <label>Unidade / creche</label>
           <select class="input" data-campo="unidade" required>
             <option value="" disabled selected>Escolha a unidade</option>
-            ${optionsHtml(MOCK_UNIDADES, "unidade", "nome_unidade")}
+            ${optionsHtml(unidades, "unidade", "nome_unidade")}
           </select>
         </div>
         <div class="field" style="margin-bottom:0;">
@@ -199,6 +208,15 @@ App.initInscricao = function () {
     e.preventDefault();
     bannerEl.innerHTML = "";
 
+    const nome = App.qs("#crianca-nome").value.trim();
+    const dataNascimento = App.qs("#crianca-nascimento").value.trim();
+    const responsavelNome = App.qs("#responsavel-nome").value.trim();
+    const responsavelTelefone = App.qs("#responsavel-telefone").value.trim();
+    if (!nome || !dataNascimento || !responsavelNome || !responsavelTelefone) {
+      bannerEl.innerHTML = App.bannerHtml("error", "Preencha o nome e a data de nascimento da criança, e o nome e telefone do responsável.");
+      return;
+    }
+
     const bairroCep = App.qs("#bairro-cep").value.trim();
     if (!bairroCep) {
       bannerEl.innerHTML = App.bannerHtml("error", "Informe o bairro ou o CEP da família.");
@@ -216,7 +234,8 @@ App.initInscricao = function () {
         bannerEl.innerHTML = App.bannerHtml("error", "Complete unidade, turma e turno em todas as opções escolhidas, ou remova a opção incompleta.");
         return;
       }
-      preferencias.push({ unidade, grupamento, turno });
+      const infoUnidade = unidades.find((u) => String(u.unidade) === String(unidade));
+      preferencias.push({ unidade, grupamento, turno, nome_unidade: infoUnidade ? infoUnidade.nome_unidade : unidade });
     }
     if (preferencias.length === 0) {
       bannerEl.innerHTML = App.bannerHtml("error", "Escolha ao menos 1 opção de creche.");
@@ -234,7 +253,15 @@ App.initInscricao = function () {
     btnEnviar.textContent = "Enviando...";
 
     try {
-      const resposta = await Api.enviarInscricao({ bairro_cep: bairroCep, preferencias, respostas });
+      const resposta = await Api.enviarInscricao({
+        nome,
+        data_nascimento: dataNascimento,
+        responsavel_nome: responsavelNome,
+        responsavel_telefone: responsavelTelefone,
+        bairro_cep: bairroCep,
+        preferencias,
+        respostas,
+      });
       App.setCriancaId(resposta.crianca_id);
       localStorage.setItem("creche_inscricao_" + resposta.crianca_id, JSON.stringify({
         bairro_cep: bairroCep,
@@ -281,10 +308,11 @@ App.initVerificacao = function () {
   let segundosRestantes = AUTO_CONFIRMA_SEGUNDOS;
 
   function nomeDaUnidade(codigoUnidade) {
-    const pref = preferencias.find((p) => p.unidade === codigoUnidade);
     if (codigoUnidade === sugerida.unidade) return sugerida.nome_unidade;
+    const pref = preferencias.find((p) => p.unidade === codigoUnidade);
+    if (pref && pref.nome_unidade) return pref.nome_unidade;
     const info = MOCK_UNIDADES.find((u) => u.unidade === codigoUnidade);
-    return info ? info.nome_unidade : (pref ? codigoUnidade : codigoUnidade);
+    return info ? info.nome_unidade : codigoUnidade;
   }
 
   function pararContador(motivoTexto) {
@@ -373,13 +401,23 @@ App.initVerificacao = function () {
     }
   }, 1000);
 
-  App.qs("#cta-continuar").addEventListener("click", () => {
-    pararContador();
-    localStorage.setItem("creche_comprovacao_" + criancaId, JSON.stringify({
-      unidade: escolhidaUnidade,
-      nome_unidade: nomeDaUnidade(escolhidaUnidade),
-    }));
-    App.goTo("classificacao.html", { crianca_id: criancaId });
+  App.qs("#cta-continuar").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Confirmando...";
+    try {
+      await Api.confirmarUnidade(criancaId, escolhidaUnidade);
+      pararContador();
+      localStorage.setItem("creche_comprovacao_" + criancaId, JSON.stringify({
+        unidade: escolhidaUnidade,
+        nome_unidade: nomeDaUnidade(escolhidaUnidade),
+      }));
+      App.goTo("classificacao.html", { crianca_id: criancaId });
+    } catch (err) {
+      root.insertAdjacentHTML("afterbegin", App.bannerHtml("error", App.mensagemErroAmigavel(err), "Não foi possível confirmar a unidade"));
+      btn.disabled = false;
+      btn.textContent = "Continuar e acompanhar minha fila";
+    }
   });
 };
 

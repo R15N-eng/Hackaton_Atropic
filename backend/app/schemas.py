@@ -83,6 +83,12 @@ class ProgramaOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class StatusMatriculaOut(BaseModel):
+    status: str
+    unidade: str | None
+    prazo_matricula: dt.datetime | None
+
+
 class ProgramaIn(BaseModel):
     nome: str
     bairro: str

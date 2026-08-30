@@ -26,6 +26,30 @@
 
   <form id="form-inscricao" novalidate>
     <div class="card">
+      <p class="section-title">Sobre a criança</p>
+      <div class="field" style="margin-bottom:0;">
+        <label for="crianca-nome">Nome completo da criança</label>
+        <input class="input" id="crianca-nome" name="nome" type="text" autocomplete="off">
+      </div>
+      <div class="field" style="margin-bottom:0;margin-top:10px;">
+        <label for="crianca-nascimento">Data de nascimento</label>
+        <input class="input" id="crianca-nascimento" name="data_nascimento" type="date">
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <p class="section-title">Sobre o responsável</p>
+      <div class="field" style="margin-bottom:0;">
+        <label for="responsavel-nome">Nome do responsável</label>
+        <input class="input" id="responsavel-nome" name="responsavel_nome" type="text" autocomplete="off">
+      </div>
+      <div class="field" style="margin-bottom:0;margin-top:10px;">
+        <label for="responsavel-telefone">Telefone (WhatsApp) do responsável</label>
+        <input class="input" id="responsavel-telefone" name="responsavel_telefone" type="tel" placeholder="+5521999999999" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
       <p class="section-title">Onde a família mora</p>
       <p class="section-sub">Usamos isso para sugerir a unidade mais próxima na hora de levar os documentos.</p>
       <div class="field" style="margin-bottom:0;">

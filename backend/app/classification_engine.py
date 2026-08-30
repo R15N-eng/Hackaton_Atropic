@@ -20,16 +20,22 @@ from sqlalchemy.orm import Session
 
 from app import models
 
-# Peso de cada resposta "sim" no questionario de vulnerabilidade.
-# TODO(Pessoa 1): substituir pela regua oficial do ano quando estiver definida.
+# Regua oficial 2025 (Query C do dataset da SME): peso de cada pergunta de
+# vulnerabilidade cuja resposta seja "sim" (True), chave = id da pergunta.
+# Perguntas 29 e 30 nao entram aqui: valem 0 ponto, servem so de criterio de
+# desempate (ver app/whatsapp.py e frontend/api.js, mesma regua nos dois lados).
 REGUA_PADRAO = {
-    "renda_baixa": 3.0,
-    "familia_monoparental": 2.0,
-    "pessoa_com_deficiencia": 3.0,
-    "beneficiario_auxilio": 2.0,
-    "mae_estudante": 1.5,
-    "mae_adolescente": 2.0,
-    "situacao_de_rua_ou_abrigo": 4.0,
+    "28": 51.0,  # inscrita no CadUnico
+    "31": 25.0,  # publico-alvo da educacao especial
+    "17": 4.0,   # crianca/familiar vitima de violencia domestica
+    "20": 4.0,   # familia monoparental
+    "25": 3.0,   # pais/responsaveis com deficiencia
+    "18": 3.0,   # doenca cronica grave no nucleo familiar
+    "6": 2.0,    # bolsa familia / Cartao Carioca
+    "16": 2.0,   # uso abusivo de drogas/alcool no nucleo familiar
+    "12": 2.0,   # membro do nucleo familiar presidiario/ex-presidiario (5 anos)
+    "23": 2.0,   # candidato refugiado
+    "27": 2.0,   # aguardou em fila no ano anterior sem ser atendida
 }
 
 

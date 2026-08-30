@@ -191,6 +191,22 @@ def processar_resposta_verificacao_telefone(
 
 PERGUNTAS_VULNERABILIDADE = list(classification_engine.REGUA_PADRAO.keys())
 
+# Texto de cada pergunta (mesma regua oficial 2025 usada no frontend), so
+# para a conversa de WhatsApp nao perguntar pelo id numerico cru.
+PERGUNTAS_TEXTO = {
+    "28": "a familia e inscrita no CadUnico (Cadastro Unico para Programas Sociais)",
+    "31": "a crianca e publico-alvo da educacao especial",
+    "17": "a crianca e/ou familiar do convivio diario e vitima de violencia domestica",
+    "20": "a crianca pertence a familia monoparental",
+    "25": "os pais ou responsaveis sao deficientes",
+    "18": "a crianca e/ou alguem do nucleo familiar apresenta doenca cronica grave",
+    "6": "a familia faz parte do bolsa familia ou possui Cartao Carioca",
+    "16": "existe algum membro do nucleo familiar com uso abusivo de drogas e/ou alcool",
+    "12": "existe algum membro do nucleo familiar presidiario ou ex-presidiario nos ultimos 5 anos",
+    "23": "o candidato e refugiado",
+    "27": "a crianca aguardou em fila de espera no ano anterior sem ter sido atendida",
+}
+
 ETAPAS = [
     "nome",
     "data_nascimento",
@@ -220,9 +236,10 @@ def _pergunta_para_etapa(etapa: str, programas: list[models.Programa]) -> str:
             "(voce podera ajustar as demais preferencias depois pelo site):\n" + lista
         )
     if etapa == "vulnerabilidade":
+        primeira = PERGUNTAS_TEXTO.get(PERGUNTAS_VULNERABILIDADE[0], PERGUNTAS_VULNERABILIDADE[0])
         return (
             "Ultima etapa: responda *sim* ou *nao* para cada pergunta, uma por vez.\n"
-            "Pergunta 1: familia tem renda baixa?"
+            f"Pergunta 1: {primeira}?"
         )
     return "Digite qualquer coisa para continuar."
 
@@ -273,7 +290,8 @@ def iniciar_ou_continuar_inscricao(
             proximo_indice = len(respostas)
             if proximo_indice < len(PERGUNTAS_VULNERABILIDADE):
                 proxima_chave = PERGUNTAS_VULNERABILIDADE[proximo_indice]
-                return f"Pergunta {proximo_indice + 1}: {proxima_chave.replace('_', ' ')}?"
+                texto_pergunta = PERGUNTAS_TEXTO.get(proxima_chave, proxima_chave)
+                return f"Pergunta {proximo_indice + 1}: {texto_pergunta}?"
             crianca = crud.criar_inscricao_a_partir_de_dict(db, dados, telefone, canal="whatsapp")
             sessao.estado = "finalizado"
             sessao.crianca_id = crianca.id

@@ -4,8 +4,8 @@
    publicar a URL. Nenhuma outra tela/arquivo deve mudar.
    ============================================================ */
 
-const USE_MOCK = true;
-const API_BASE = ""; // ex: "https://api.creche.rio/v1"
+const USE_MOCK = false;
+const API_BASE = "http://localhost:8000"; // ex: "https://api.creche.rio/v1"
 
 /* ------------------------------------------------------------
    Catálogo mock de unidades/programas — só usado quando USE_MOCK.
@@ -386,6 +386,11 @@ const MockApi = {
     };
   },
 
+  async confirmarUnidade(_criancaId, _programaId) {
+    await delay(150);
+    return { ok: true };
+  },
+
   async trocar(criancaId, novaOrdemPreferencias) {
     await delay(450);
     const registro = MockStore.load(criancaId);
@@ -450,19 +455,140 @@ async function httpJson(path, options) {
   return res.json();
 }
 
+/* ------------------------------------------------------------
+   RealApi fala com o contrato de verdade do Back B (ver
+   backend/app/schemas.py e backend/app/main.py) — diferente do
+   contrato assumido pelo mock nesta tela. Toda tradução de forma
+   (nomes de campo, granularidade unidade/programa) fica aqui, para
+   as telas em app.js não precisarem saber a diferença.
+   ------------------------------------------------------------ */
+
+let _unidadesCache = null;
+
+async function _carregarUnidades() {
+  if (_unidadesCache) return _unidadesCache;
+  const lista = await httpJson("/programas");
+  _unidadesCache = lista.map((p) => ({ unidade: p.id, nome_unidade: p.nome, bairro: p.bairro }));
+  return _unidadesCache;
+}
+
+function _prefsLocais(criancaId) {
+  const cache = JSON.parse(localStorage.getItem("creche_inscricao_" + criancaId) || "null");
+  return (cache && cache.preferencias) || [];
+}
+
+function _achaPrefLocal(criancaId, programaId) {
+  return _prefsLocais(criancaId).find((p) => String(p.unidade) === String(programaId)) || {};
+}
+
 const RealApi = {
-  inscricao(payload) {
-    return httpJson("/inscricao", { method: "POST", body: JSON.stringify(payload) });
+  async inscricao(payload) {
+    const unidades = await _carregarUnidades();
+    const body = {
+      nome: payload.nome,
+      data_nascimento: payload.data_nascimento,
+      responsavel_nome: payload.responsavel_nome,
+      responsavel_telefone: payload.responsavel_telefone,
+      bairro: payload.bairro_cep,
+      cep: "",
+      preferencias: payload.preferencias.map((p) => ({
+        programa_id: Number(p.unidade),
+        faixa_etaria: p.grupamento,
+        turno: p.turno,
+      })),
+      respostas_vulnerabilidade: payload.respostas,
+    };
+    const resp = await httpJson("/inscricao", { method: "POST", body: JSON.stringify(body) });
+
+    // sugere, entre as preferências, a unidade mais perto do bairro informado
+    // (mesma heurística por texto de bairro do modo mock — o back ainda não
+    // calcula distância geográfica real, ver backend/README.md "Limitações").
+    let sugerida = null;
+    let menorDist = Infinity;
+    for (const pref of payload.preferencias) {
+      const info = unidades.find((u) => String(u.unidade) === String(pref.unidade));
+      if (!info) continue;
+      const d = distanciaMockKm(payload.bairro_cep, info.bairro);
+      if (d < menorDist) { menorDist = d; sugerida = info; }
+    }
+    if (!sugerida) sugerida = unidades[0];
+
+    return {
+      crianca_id: resp.id,
+      score: resp.score,
+      unidade_comprovacao_sugerida: sugerida ? {
+        unidade: sugerida.unidade,
+        nome_unidade: sugerida.nome_unidade,
+        distancia_km: menorDist === Infinity ? null : menorDist,
+      } : null,
+    };
   },
-  classificacao(criancaId) {
-    return httpJson(`/classificacao/${encodeURIComponent(criancaId)}`);
-  },
-  trocar(criancaId, novaOrdemPreferencias) {
-    return httpJson(`/classificacao/${encodeURIComponent(criancaId)}/trocar`, {
+
+  confirmarUnidade(criancaId, programaId) {
+    return httpJson(`/verificacao_documentos/${encodeURIComponent(criancaId)}?programa_id=${Number(programaId)}`, {
       method: "POST",
-      body: JSON.stringify({ nova_ordem_preferencias: novaOrdemPreferencias }),
     });
   },
+
+  async classificacao(criancaId) {
+    const info = await httpJson(`/classificacao/${encodeURIComponent(criancaId)}`);
+
+    const classificacoes = [];
+    if (info.programa_escolhido_id != null) {
+      const prog = await httpJson(`/programa/${info.programa_escolhido_id}`);
+      const pref = _achaPrefLocal(criancaId, info.programa_escolhido_id);
+      const capacidade = prog.capacidade || 1;
+      let status = "espera";
+      if (info.posicao_na_fila != null) {
+        if (info.posicao_na_fila <= capacidade) status = "dentro";
+        else if (info.posicao_na_fila <= Math.round(capacidade * 1.7)) status = "espera";
+        else status = "fora";
+      }
+      classificacoes.push({
+        programa: {
+          unidade: info.programa_escolhido_id,
+          nome_unidade: info.programa_escolhido_nome,
+          grupamento: pref.grupamento || "",
+          turno: pref.turno || "",
+        },
+        posicao: info.posicao_na_fila,
+        total_fila: info.total_na_fila,
+        status,
+        pode_trocar_ate: info.pode_alterar_ate,
+      });
+    }
+
+    const registro = JSON.parse(localStorage.getItem("creche_inscricao_" + criancaId) || "null");
+    const score = registro ? registro.score : null;
+    const sugestoes = (info.sugestoes || []).map((s) => {
+      const pref = _achaPrefLocal(criancaId, s.programa_id);
+      let chance = "media";
+      if (s.nota_corte_atual != null && score != null) {
+        if (score >= s.nota_corte_atual) chance = "alta";
+        else if (score >= s.nota_corte_atual - 15) chance = "media";
+        else chance = "baixa";
+      }
+      return {
+        unidade: s.programa_id,
+        nome_unidade: s.programa_nome,
+        grupamento: pref.grupamento || "",
+        turno: pref.turno || "",
+        chance,
+      };
+    });
+
+    return { classificacoes, sugestoes };
+  },
+
+  async trocar(criancaId, novaOrdemPreferencias) {
+    const primeira = novaOrdemPreferencias[0];
+    await httpJson(`/escolher_unidade?crianca_id=${encodeURIComponent(criancaId)}&programa_id=${Number(primeira.unidade)}`, {
+      method: "POST",
+    });
+    const dados = await RealApi.classificacao(criancaId);
+    return { ok: true, classificacoes: dados.classificacoes };
+  },
+
   statusMatricula(criancaId) {
     return httpJson(`/status-matricula/${encodeURIComponent(criancaId)}`);
   },
@@ -474,7 +600,9 @@ const RealApi = {
    ------------------------------------------------------------ */
 
 const Api = {
+  listarUnidades: () => (USE_MOCK ? Promise.resolve(MOCK_UNIDADES) : _carregarUnidades()),
   enviarInscricao: (payload) => (USE_MOCK ? MockApi.inscricao(payload) : RealApi.inscricao(payload)),
+  confirmarUnidade: (criancaId, unidade) => (USE_MOCK ? MockApi.confirmarUnidade(criancaId, unidade) : RealApi.confirmarUnidade(criancaId, unidade)),
   buscarClassificacao: (criancaId) => (USE_MOCK ? MockApi.classificacao(criancaId) : RealApi.classificacao(criancaId)),
   trocarPreferencias: (criancaId, novaOrdem) => (USE_MOCK ? MockApi.trocar(criancaId, novaOrdem) : RealApi.trocar(criancaId, novaOrdem)),
   buscarStatusMatricula: (criancaId) => (USE_MOCK ? MockApi.statusMatricula(criancaId) : RealApi.statusMatricula(criancaId)),

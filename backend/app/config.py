@@ -19,3 +19,7 @@ JANELA_TROCA_DIAS = int(os.getenv("JANELA_TROCA_DIAS", "7"))
 INTERVALO_VERIFICACAO_TELEFONE_DIAS = int(
     os.getenv("INTERVALO_VERIFICACAO_TELEFONE_DIAS", "30")
 )
+
+# Prazo (a partir da convocacao/escolha da unidade) para a familia comparecer
+# e matricular a crianca presencialmente. Usado em GET /status-matricula.
+PRAZO_MATRICULA_DIAS = int(os.getenv("PRAZO_MATRICULA_DIAS", "15"))

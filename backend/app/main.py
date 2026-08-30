@@ -2,6 +2,7 @@ import datetime as dt
 import logging
 
 from fastapi import Depends, FastAPI, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from twilio.twiml.messaging_response import MessagingResponse
@@ -12,6 +13,13 @@ from app.database import get_db, init_db
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Fila de Creches - API (Back B)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -193,6 +201,29 @@ def classificacao(crianca_id: int, db: Session = Depends(get_db)):
         pode_alterar_ate=pode_alterar_ate,
         sugestoes=sugestoes,
     )
+
+
+@app.get("/status-matricula/{crianca_id}", response_model=schemas.StatusMatriculaOut)
+def status_matricula(crianca_id: int, db: Session = Depends(get_db)):
+    """Usado pela tela 4 do front (status.html): resultado final da inscricao,
+    fora do contrato original da Pessoa 2 (adicionado para o front consumir a
+    API real em vez do mock)."""
+    crianca = db.get(models.Crianca, crianca_id)
+    if crianca is None:
+        raise HTTPException(404, "Crianca nao encontrada")
+
+    if crianca.status in (
+        models.StatusInscricao.SELECIONADO.value,
+        models.StatusInscricao.MATRICULADO.value,
+    ):
+        base = crianca.escolhido_em or crianca.created_at
+        return schemas.StatusMatriculaOut(
+            status=crianca.status,
+            unidade=crianca.programa_escolhido.nome if crianca.programa_escolhido else None,
+            prazo_matricula=base + dt.timedelta(days=config.PRAZO_MATRICULA_DIAS),
+        )
+
+    return schemas.StatusMatriculaOut(status="aguardando", unidade=None, prazo_matricula=None)
 
 
 @app.post("/escolher_unidade", response_model=schemas.ClassificacaoOut)

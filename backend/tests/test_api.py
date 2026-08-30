@@ -28,12 +28,12 @@ def test_fluxo_inscricao_ate_classificacao(client):
             "preferencias": [
                 {"programa_id": programa_id, "faixa_etaria": "0-2", "turno": "manha"}
             ],
-            "respostas_vulnerabilidade": {"renda_baixa": True, "familia_monoparental": True},
+            "respostas_vulnerabilidade": {"6": True, "20": True},
         },
     )
     assert resp.status_code == 200
     crianca = resp.json()
-    assert crianca["score"] == 5.0  # 3.0 (renda_baixa) + 2.0 (familia_monoparental)
+    assert crianca["score"] == 6.0  # 2.0 (bolsa familia) + 4.0 (familia monoparental)
     crianca_id = crianca["id"]
 
     resp = client.post(f"/verificacao_documentos/{crianca_id}")
