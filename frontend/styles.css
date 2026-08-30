@@ -1,78 +1,62 @@
 /* ============================================================
    Creche RJ — design system (mobile-first, sem framework)
+   Tema claro (padrão único, sem modo escuro por enquanto).
    ============================================================ */
 
 :root {
   color-scheme: light;
 
-  /* cor de marca: azul marinho (referência SME-Rio), ajustado para
-     não ficar "azul de sistema" genérico */
-  --navy-900: #0f2547;
-  --navy-700: #1b3f7a;
-  --navy-500: #3a5fa0;
-  --navy-100: #e7ecf6;
+  --ink: #16233a;
+  --ink-2: #55647a;
+  --muted: #8b96a8;
 
-  /* fundo quente, não é cinza de "site de governo" */
-  --bg: #f7f5f0;
+  --paper: #f3f5f4;
   --surface: #ffffff;
-  --surface-2: #f1ede4;
+  --surface-2: #eef0ef;
 
-  --ink-900: #17202b;
-  --ink-600: #4c5666;
-  --ink-400: #7a8394;
-  --line: #ddd8cc;
-  --line-strong: #c7c0b0;
+  --border: #dce2e6;
+  --border-strong: #c7d0d6;
 
-  --success: #1c7d43;
-  --success-bg: #e6f4ea;
-  --warning: #9a5b00;
-  --warning-bg: #fbeed9;
-  --danger: #ab2a22;
-  --danger-bg: #fbe9e7;
-  --neutral-chip: #5b5346;
-  --neutral-chip-bg: #eee9dc;
+  --brand: #1b3f7a;
+  --brand-2: #2c6bc9;
+  --brand-tint: rgba(27, 63, 122, 0.08);
+  --brand-tint-strong: rgba(27, 63, 122, 0.14);
 
-  --focus: #2a6fdb;
+  --status-dentro: #2f8f5c;
+  --status-dentro-bg: #e4f3ea;
+  --status-espera: #b98520;
+  --status-espera-bg: #fbf0d9;
+  --status-fora: #b5473b;
+  --status-fora-bg: #fbe7e4;
+  --neutral-chip: var(--ink-2);
+  --neutral-chip-bg: var(--surface-2);
+
+  --focus: var(--brand-2);
 
   --radius-s: 8px;
   --radius-m: 14px;
   --radius-l: 20px;
 
-  --shadow-card: 0 1px 2px rgba(23, 32, 43, 0.06), 0 6px 20px -8px rgba(23, 32, 43, 0.12);
+  --shadow-card: 0 1px 2px rgba(22, 35, 58, 0.05), 0 6px 20px -8px rgba(22, 35, 58, 0.10);
 
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
+  --font-display: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font: var(--font-body);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #10151d;
-    --surface: #1a212c;
-    --surface-2: #212936;
-    --ink-900: #f2f0ea;
-    --ink-600: #c2c6cf;
-    --ink-400: #8b93a1;
-    --line: #303948;
-    --line-strong: #3c4655;
-    --navy-100: #1c2740;
-    --navy-500: #6f92d6;
-    --navy-700: #7fa1e6;
-    --navy-900: #cfdcf4;
-    --success-bg: #123322;
-    --warning-bg: #3a2a0c;
-    --danger-bg: #3a1613;
-    --neutral-chip-bg: #2a2a22;
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px -8px rgba(0, 0, 0, 0.5);
-  }
+  /* aliases legados — mantidos só porque app.js referencia estes nomes
+     diretamente em alguns estilos inline; não renomear sem atualizar lá */
+  --success: var(--status-dentro);
+  --success-bg: var(--status-dentro-bg);
+  --ink-900: var(--ink);
 }
 
 * { box-sizing: border-box; }
 html, body { padding: 0; margin: 0; }
 
 body {
-  background: var(--bg);
-  color: var(--ink-900);
-  font-family: var(--font);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -91,77 +75,105 @@ h1, h2, h3, p, ul, ol { margin: 0; }
   .container { max-width: 560px; padding: 32px 24px 56px; }
 }
 
-/* ---------- cabeçalho / stepper ---------- */
+/* ---------- cabeçalho ---------- */
 
 .app-header {
-  background: var(--navy-900);
-  color: #fff;
-  padding: 14px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 16px;
 }
 
 .app-header .brand {
   display: flex;
   align-items: center;
   gap: 10px;
+  font-family: var(--font-display);
   font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.01em;
+  font-size: 16px;
+  color: var(--ink);
+  letter-spacing: -0.005em;
   max-width: 480px;
   margin: 0 auto;
 }
 
 .app-header .brand .mark {
-  width: 26px; height: 26px; border-radius: 7px;
-  background: rgba(255,255,255,0.16);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 15px;
+  width: 22px; height: 3px;
+  border-radius: 2px;
+  background: var(--brand);
   flex: none;
 }
 
 @media (min-width: 640px) { .app-header .brand { max-width: 560px; } }
 
+/* ---------- stepper (círculos numerados + linha) ---------- */
+
+.stepper-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 16px 12px;
+}
+
 .stepper {
   display: flex;
-  gap: 6px;
+  align-items: center;
   max-width: 480px;
-  margin: 10px auto 0;
+  margin: 0 auto;
+  list-style: none;
+  padding: 0;
 }
 
-@media (min-width: 640px) { .stepper { max-width: 560px; } }
+@media (min-width: 640px) { .stepper, .stepper-label { max-width: 560px; } }
 
-.stepper .step {
+.stepper-step { flex: none; }
+
+.stepper-line {
   flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255,255,255,0.22);
+  height: 2px;
+  background: var(--border);
+  margin: 0 2px;
+}
+.stepper-line.done { background: var(--brand); }
+
+.stepper-step .dot {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12.5px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
 }
 
-.stepper .step.done { background: #ffffff; }
-.stepper .step.active { background: #ffffff; }
+.stepper-step.done .dot { background: var(--brand); border-color: var(--brand); color: #fff; }
+.stepper-step.active .dot { border-color: var(--brand); color: var(--brand); box-shadow: 0 0 0 3px var(--brand-tint-strong); }
 
 .stepper-label {
   max-width: 480px;
-  margin: 8px auto 0;
+  margin: 10px auto 0;
   font-size: 12.5px;
-  color: rgba(255,255,255,0.78);
+  color: var(--ink-2);
 }
-
-@media (min-width: 640px) { .stepper-label { max-width: 560px; } }
 
 /* ---------- tipografia utilitária ---------- */
 
 .eyebrow {
+  font-family: var(--font-display);
   font-size: 12.5px;
   font-weight: 700;
-  color: var(--navy-700);
+  color: var(--brand);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 6px;
 }
 
 .page-title {
+  font-family: var(--font-display);
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.25;
   letter-spacing: -0.01em;
   margin-bottom: 6px;
@@ -169,12 +181,13 @@ h1, h2, h3, p, ul, ol { margin: 0; }
 
 .page-lede {
   font-size: 14.5px;
-  color: var(--ink-600);
+  color: var(--ink-2);
   line-height: 1.55;
   margin-bottom: 20px;
 }
 
 .section-title {
+  font-family: var(--font-display);
   font-size: 15px;
   font-weight: 700;
   margin-bottom: 4px;
@@ -182,7 +195,7 @@ h1, h2, h3, p, ul, ol { margin: 0; }
 
 .section-sub {
   font-size: 13px;
-  color: var(--ink-600);
+  color: var(--ink-2);
   margin-bottom: 12px;
   line-height: 1.5;
 }
@@ -191,16 +204,24 @@ h1, h2, h3, p, ul, ol { margin: 0; }
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: var(--radius-m);
   padding: 18px;
   box-shadow: var(--shadow-card);
 }
 
-.card + .card { margin-top: 12px; }
+.card + .card { margin-top: 16px; }
 
 .stack { display: flex; flex-direction: column; gap: 14px; }
 .stack-tight { display: flex; flex-direction: column; gap: 8px; }
+
+/* seções do formulário de inscrição — mais respiro entre elas */
+.form-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.form-sections .card { margin-top: 0; }
 
 /* ---------- formulário ---------- */
 
@@ -210,12 +231,12 @@ h1, h2, h3, p, ul, ol { margin: 0; }
 .field label {
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--ink-900);
+  color: var(--ink);
 }
 
 .field .hint {
   font-size: 12px;
-  color: var(--ink-400);
+  color: var(--muted);
 }
 
 .input, select.input {
@@ -224,16 +245,16 @@ h1, h2, h3, p, ul, ol { margin: 0; }
   min-height: 46px;
   padding: 0 14px;
   font-size: 16px;
-  font-family: var(--font);
-  color: var(--ink-900);
+  font-family: var(--font-body);
+  color: var(--ink);
   background: var(--surface);
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--border-strong);
   border-radius: var(--radius-s);
 }
 
 select.input {
-  background-image: linear-gradient(45deg, transparent 50%, var(--ink-400) 50%),
-                     linear-gradient(135deg, var(--ink-400) 50%, transparent 50%);
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                     linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 20px) center, calc(100% - 15px) center;
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
@@ -248,7 +269,7 @@ select.input {
 /* linha de preferência */
 
 .pref-row {
-  border: 1.5px solid var(--line);
+  border: 1.5px solid var(--border);
   border-radius: var(--radius-s);
   padding: 12px;
   background: var(--surface-2);
@@ -266,13 +287,13 @@ select.input {
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
-  font-weight: 700;
-  color: var(--navy-700);
+  font-weight: 600;
+  color: var(--brand);
 }
 
 .pref-badge .n {
   width: 20px; height: 20px; border-radius: 50%;
-  background: var(--navy-100); color: var(--navy-700);
+  background: var(--brand-tint); color: var(--brand);
   display: flex; align-items: center; justify-content: center;
   font-size: 11.5px;
 }
@@ -288,20 +309,20 @@ select.input {
 .icon-btn {
   border: none;
   background: transparent;
-  color: var(--ink-400);
+  color: var(--muted);
   font-size: 13px;
   font-weight: 600;
   padding: 6px 8px;
   cursor: pointer;
   border-radius: var(--radius-s);
 }
-.icon-btn:hover { background: rgba(0,0,0,0.05); color: var(--danger); }
+.icon-btn:hover { background: rgba(22,35,58,0.05); color: var(--status-fora); }
 
 .reorder-btns { display: flex; gap: 4px; }
 .reorder-btns button {
   width: 34px; height: 34px; border-radius: var(--radius-s);
-  border: 1.5px solid var(--line-strong); background: var(--surface);
-  font-size: 15px; line-height: 1; cursor: pointer; color: var(--ink-600);
+  border: 1.5px solid var(--border-strong); background: var(--surface);
+  font-size: 15px; line-height: 1; cursor: pointer; color: var(--ink-2);
 }
 .reorder-btns button:disabled { opacity: 0.35; cursor: default; }
 
@@ -313,28 +334,28 @@ select.input {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--border);
 }
 .yn-item:last-child { border-bottom: none; }
 
 .yn-question { font-size: 14px; line-height: 1.4; flex: 1; }
 
-.yn-toggle { display: flex; gap: 6px; flex: none; }
+.yn-toggle { display: flex; gap: 8px; flex: none; }
 
 .yn-btn {
-  min-width: 56px;
-  min-height: 38px;
-  border-radius: 999px;
-  border: 1.5px solid var(--line-strong);
+  min-width: 64px;
+  min-height: 40px;
+  border-radius: var(--radius-s);
+  border: 1.5px solid var(--border);
   background: var(--surface);
-  color: var(--ink-600);
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--ink-2);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.yn-btn[aria-pressed="true"] { background: var(--navy-700); border-color: var(--navy-700); color: #fff; }
-.yn-btn.no[aria-pressed="true"] { background: var(--ink-600); border-color: var(--ink-600); }
+.yn-btn[aria-pressed="true"] { background: var(--brand-2); border-color: var(--brand-2); color: #fff; }
 
 /* ---------- botões ---------- */
 
@@ -347,8 +368,8 @@ select.input {
   padding: 0 20px;
   border-radius: var(--radius-s);
   font-size: 15.5px;
-  font-weight: 700;
-  font-family: var(--font);
+  font-weight: 600;
+  font-family: var(--font-body);
   border: 1.5px solid transparent;
   cursor: pointer;
   text-decoration: none;
@@ -359,13 +380,13 @@ select.input {
 
 .btn-block { width: 100%; }
 
-.btn-primary { background: var(--navy-700); color: #fff; }
-.btn-primary:hover:not([disabled]) { background: var(--navy-900); }
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-primary:hover:not([disabled]) { background: var(--ink); }
 
-.btn-secondary { background: var(--surface); color: var(--navy-700); border-color: var(--navy-700); }
-.btn-secondary:hover:not([disabled]) { background: var(--navy-100); }
+.btn-secondary { background: var(--surface); color: var(--brand); border-color: var(--brand); }
+.btn-secondary:hover:not([disabled]) { background: var(--brand-tint); }
 
-.btn-ghost { background: transparent; color: var(--ink-600); border-color: var(--line-strong); }
+.btn-ghost { background: transparent; color: var(--ink-2); border-color: var(--border-strong); }
 
 .btn-sm { min-height: 38px; padding: 0 14px; font-size: 13.5px; }
 
@@ -374,7 +395,7 @@ select.input {
   bottom: 0;
   padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
   margin: 24px -16px 0;
-  background: linear-gradient(180deg, transparent, var(--bg) 30%);
+  background: linear-gradient(180deg, transparent, var(--paper) 30%);
 }
 
 /* ---------- badges de status ---------- */
@@ -386,16 +407,16 @@ select.input {
   padding: 5px 11px;
   border-radius: 999px;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
-.badge-dentro { background: var(--success-bg); color: var(--success); }
-.badge-espera { background: var(--warning-bg); color: var(--warning); }
-.badge-fora   { background: var(--danger-bg);  color: var(--danger); }
+.badge-dentro { background: var(--status-dentro-bg); color: var(--status-dentro); }
+.badge-espera { background: var(--status-espera-bg); color: var(--status-espera); }
+.badge-fora   { background: var(--status-fora-bg);  color: var(--status-fora); }
 
-.badge-alta  { background: var(--success-bg); color: var(--success); }
-.badge-media { background: var(--warning-bg); color: var(--warning); }
+.badge-alta  { background: var(--status-dentro-bg); color: var(--status-dentro); }
+.badge-media { background: var(--status-espera-bg); color: var(--status-espera); }
 .badge-baixa { background: var(--neutral-chip-bg); color: var(--neutral-chip); }
 
 /* ---------- posição em destaque ---------- */
@@ -406,9 +427,10 @@ select.input {
 }
 
 .position-hero .num {
+  font-family: var(--font-display);
   font-size: 44px;
   font-weight: 800;
-  color: var(--navy-900);
+  color: var(--ink);
   letter-spacing: -0.02em;
   line-height: 1;
 }
@@ -417,7 +439,7 @@ select.input {
 
 .position-hero .of {
   font-size: 14px;
-  color: var(--ink-600);
+  color: var(--ink-2);
   margin-top: 6px;
 }
 
@@ -433,10 +455,10 @@ select.input {
   line-height: 1.5;
 }
 
-.banner-info    { background: var(--navy-100); color: var(--navy-900); }
-.banner-error   { background: var(--danger-bg); color: var(--danger); }
-.banner-success { background: var(--success-bg); color: var(--success); }
-.banner-warning { background: var(--warning-bg); color: var(--warning); }
+.banner-info    { background: var(--brand-tint); color: var(--brand); }
+.banner-error   { background: var(--status-fora-bg); color: var(--status-fora); }
+.banner-success { background: var(--status-dentro-bg); color: var(--status-dentro); }
+.banner-warning { background: var(--status-espera-bg); color: var(--status-espera); }
 
 .banner b { font-weight: 700; }
 
@@ -445,7 +467,7 @@ select.input {
 .empty-state, .loading-state, .error-state {
   text-align: center;
   padding: 36px 12px;
-  color: var(--ink-600);
+  color: var(--ink-2);
 }
 
 .empty-state .glyph, .loading-state .glyph, .error-state .glyph {
@@ -455,7 +477,7 @@ select.input {
 
 .skeleton {
   border-radius: var(--radius-m);
-  background: linear-gradient(100deg, var(--surface-2) 30%, var(--line) 50%, var(--surface-2) 70%);
+  background: linear-gradient(100deg, var(--surface-2) 30%, var(--border) 50%, var(--surface-2) 70%);
   background-size: 200% 100%;
   animation: shimmer 1.3s infinite;
   height: 96px;
@@ -477,22 +499,22 @@ select.input {
   align-items: center;
   gap: 6px;
   font-size: 12.5px;
-  font-weight: 700;
-  color: var(--navy-700);
-  background: var(--navy-100);
+  font-weight: 600;
+  color: var(--brand);
+  background: var(--brand-tint);
   padding: 5px 10px;
   border-radius: 999px;
 }
 
-.countdown.expired { color: var(--ink-400); background: var(--surface-2); }
+.countdown.expired { color: var(--muted); background: var(--surface-2); }
 
 /* ---------- divisores / meta ---------- */
 
-.divider { height: 1px; background: var(--line); border: none; margin: 20px 0; }
+.divider { height: 1px; background: var(--border); border: none; margin: 20px 0; }
 
 .meta-line {
   font-size: 12px;
-  color: var(--ink-400);
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -500,16 +522,16 @@ select.input {
 
 .link-btn {
   background: none; border: none; padding: 0; cursor: pointer;
-  color: var(--navy-700); font-weight: 700; font-size: inherit; font-family: var(--font);
+  color: var(--brand); font-weight: 600; font-size: inherit; font-family: var(--font-body);
   text-decoration: underline;
 }
 
 .small-caps {
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--ink-400);
+  color: var(--muted);
 }
 
 .sr-only {
