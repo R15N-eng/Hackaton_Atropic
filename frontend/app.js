@@ -734,19 +734,28 @@ App.initClassificacao = function () {
       });
     }
 
+    // move a seleção pendente (unidade+turma+turno escolhidos no formulário
+    // "adicionar uma nova unidade") para a lista em edição. Usado tanto pelo
+    // clique explícito em "Adicionar essa unidade à lista" quanto, de forma
+    // automática, se a família confirmar direto sem clicar nesse botão.
+    function adicionarSelecaoPendente() {
+      if (ordemEmEdicao.some((p) => String(p.unidade) === String(novaSelecao.unidade))) return;
+      const infoUnidade = (unidadesCatalogo || []).find((u) => String(u.unidade) === String(novaSelecao.unidade));
+      ordemEmEdicao.push({
+        unidade: novaSelecao.unidade,
+        nome_unidade: infoUnidade ? infoUnidade.nome_unidade : novaSelecao.unidade,
+        grupamento: novaSelecao.grupamento,
+        turno: novaSelecao.turno,
+      });
+      novaSelecao = { unidade: "", grupamento: "", turno: "" };
+      previewResultado = null;
+    }
+
     const containerPreview = App.qs("#preview-resultado");
     if (containerPreview) {
       containerPreview.addEventListener("click", (e) => {
         if (!e.target.closest('[data-acao="adicionar-lista"]')) return;
-        const infoUnidade = (unidadesCatalogo || []).find((u) => String(u.unidade) === String(novaSelecao.unidade));
-        ordemEmEdicao.push({
-          unidade: novaSelecao.unidade,
-          nome_unidade: infoUnidade ? infoUnidade.nome_unidade : novaSelecao.unidade,
-          grupamento: novaSelecao.grupamento,
-          turno: novaSelecao.turno,
-        });
-        novaSelecao = { unidade: "", grupamento: "", turno: "" };
-        previewResultado = null;
+        adicionarSelecaoPendente();
         renderModoTroca();
       });
     }
@@ -758,6 +767,16 @@ App.initClassificacao = function () {
 
     App.qs("#btn-confirmar-troca").addEventListener("click", async (e) => {
       const btn = e.target;
+
+      // se a família preencheu unidade + turma + turno no formulário de
+      // "adicionar uma nova unidade" mas confirmou direto, sem clicar em
+      // "Ver em qual vaga eu ficaria" -> "Adicionar essa unidade à lista",
+      // a intenção é clara: inclui automaticamente antes de salvar, em vez
+      // de confirmar sem efeito nenhum (o que parecia "não faz nada").
+      if (novaSelecao.unidade && novaSelecao.grupamento && novaSelecao.turno) {
+        adicionarSelecaoPendente();
+      }
+
       btn.disabled = true;
       btn.textContent = "Confirmando...";
       const inscricaoCacheKey = "creche_inscricao_" + criancaId;
