@@ -1,4 +1,4 @@
-🔗 **Site:** https://r15n-eng.github.io/Hackaton_Atropic/
+🔗 **Site:** https://r15n-eng.github.io/Hackaton_Claude_Lab
 🎥 **Vídeo:** Na raiz do  git
 
 ---
